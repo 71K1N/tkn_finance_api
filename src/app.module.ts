@@ -5,6 +5,7 @@ import { CategoryModule } from './category/category.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SubcategoryModule } from './subcategory/subcategory.module';
 import { BankAccountModule } from './bank-account/bank-account.module';
+import { TransactionModule } from './transaction/transaction.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { BankAccountModule } from './bank-account/bank-account.module';
     }),
     SubcategoryModule,
     BankAccountModule,
+    TransactionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
