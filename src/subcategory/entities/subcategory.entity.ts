@@ -1,5 +1,5 @@
-// import { Category } from 'src/category/entities/category.entity';
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Category } from 'src/category/entities/category.entity';
+import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
 
 @Entity()
 export class Subcategory {
@@ -15,6 +15,7 @@ export class Subcategory {
   @Column('int')
   categoryId: number;
 
-  // @ManyToOne(() => Category, (category) => category.subcategories)
-  // category: Category;
+  @ManyToOne(() => Category)
+  @JoinColumn({ name: 'categoryId' })
+  category: Category;
 }
