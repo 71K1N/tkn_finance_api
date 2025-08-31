@@ -8,4 +8,5 @@ export class CreateTransactionDto {
   user_id: number;
   account_id: number;
   paid_amount: number;
+  type: string;
 }

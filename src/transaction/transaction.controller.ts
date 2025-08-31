@@ -5,13 +5,13 @@ import {
   Body,
   Param,
   Patch,
-  // Patch,
-  // Param,
   Delete,
 } from '@nestjs/common';
 import { TransactionService } from './transaction.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
+import { PaymentTransactionDto } from './dto/payment-transaction.dto';
+import { TransactionResponseDto } from './dto/transaction-response.dto';
 
 @Controller('transaction')
 export class TransactionController {
@@ -23,12 +23,12 @@ export class TransactionController {
   }
 
   @Get()
-  findAll() {
+  async findAll(): Promise<TransactionResponseDto[]> {
     return this.transactionService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string): Promise<TransactionResponseDto | null> {
     return this.transactionService.findOne(+id);
   }
 
@@ -43,5 +43,13 @@ export class TransactionController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.transactionService.remove(+id);
+  }
+
+  @Post(':id/payment')
+  payment(
+    @Param('id') id: string,
+    @Body() paymentDto: PaymentTransactionDto,
+  ) {
+    return this.transactionService.payment(+id, paymentDto);
   }
 }

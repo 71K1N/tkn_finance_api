@@ -6,6 +6,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SubcategoryModule } from './subcategory/subcategory.module';
 import { BankAccountModule } from './bank-account/bank-account.module';
 import { TransactionModule } from './transaction/transaction.module';
+import { Category } from './category/entities/category.entity';
+import { Subcategory } from './subcategory/entities/subcategory.entity';
+import { Transaction } from './transaction/entities/transaction.entity';
+import { BankAccount } from './bank-account/entities/bank-account.entity';
 
 @Module({
   imports: [
@@ -13,12 +17,13 @@ import { TransactionModule } from './transaction/transaction.module';
     TypeOrmModule.forRoot({
       database: './src/database/tknfinance.sqlite',
       type: 'sqlite',
-      entities: ['dist/**/*.entity.js'],
+      entities: [Category, Subcategory, Transaction, BankAccount],
       synchronize: true,
     }),
     SubcategoryModule,
     BankAccountModule,
     TransactionModule,
+    BankAccountModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Subcategory } from 'src/subcategory/entities/subcategory.entity';
 
 @Entity()
 export class Transaction {
@@ -17,7 +18,7 @@ export class Transaction {
   @Column('date')
   due_date: Date;
 
-  @Column('date')
+  @Column('date',{nullable:true})
   payment_date: Date;
 
   @Column('int')
@@ -31,4 +32,11 @@ export class Transaction {
 
   @Column('float')
   paid_amount: number;
+
+  @Column({length: 255})
+  type: string;
+
+  @ManyToOne(() => Subcategory)
+  @JoinColumn({ name: 'subcategory_id' })
+  subcategory: Subcategory;
 }
