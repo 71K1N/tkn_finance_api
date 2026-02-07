@@ -6,17 +6,25 @@ import {
   Patch,
   Param,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { AuthGuard } from '../common/auth.guard';
+import { User } from '../common/user.decorator';
 
+@UseGuards(AuthGuard)
 @Controller('category')
 export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Post()
-  create(@Body() createCategoryDto: CreateCategoryDto) {
+  create(@User() user: any, @Body() createCategoryDto: CreateCategoryDto) {
+    if (user && user.id) {
+      (createCategoryDto as any).created_by = user.id;
+      (createCategoryDto as any).updated_by = user.id;
+    }
     return this.categoryService.create(createCategoryDto);
   }
 
@@ -32,9 +40,13 @@ export class CategoryController {
 
   @Patch(':id')
   update(
+    @User() user: any,
     @Param('id') id: string,
     @Body() updateCategoryDto: UpdateCategoryDto,
   ) {
+    if (user && user.id) {
+      (updateCategoryDto as any).updated_by = user.id;
+    }
     return this.categoryService.update(+id, updateCategoryDto);
   }
 
