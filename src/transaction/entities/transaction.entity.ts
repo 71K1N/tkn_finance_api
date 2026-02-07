@@ -1,5 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Subcategory } from 'src/subcategory/entities/subcategory.entity';
+import { CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity()
 export class Transaction {
@@ -42,4 +43,10 @@ export class Transaction {
   @ManyToOne(() => Subcategory)
   @JoinColumn({ name: 'subcategory_id' })
   subcategory: Subcategory;
+
+  @CreateDateColumn({ type: 'datetime' })
+  created_at: Date;
+
+  @UpdateDateColumn({ type: 'datetime' })
+  updated_at: Date;
 }
