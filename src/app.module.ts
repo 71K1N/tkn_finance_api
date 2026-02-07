@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SubcategoryModule } from './subcategory/subcategory.module';
 import { BankAccountModule } from './bank-account/bank-account.module';
 import { TransactionModule } from './transaction/transaction.module';
+import { BudgetModule } from './budget/budget.module';
 import { Category } from './category/entities/category.entity';
 import { Subcategory } from './subcategory/entities/subcategory.entity';
 import { Transaction } from './transaction/entities/transaction.entity';
@@ -27,7 +28,7 @@ import { SavingsGoal } from './savings-goal/entities/savings-goal.entity';
     SubcategoryModule,
     BankAccountModule,
     TransactionModule,
-    BankAccountModule,
+    BudgetModule,
   ],
   controllers: [AppController],
   providers: [AppService],
