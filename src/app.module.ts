@@ -10,6 +10,10 @@ import { Category } from './category/entities/category.entity';
 import { Subcategory } from './subcategory/entities/subcategory.entity';
 import { Transaction } from './transaction/entities/transaction.entity';
 import { BankAccount } from './bank-account/entities/bank-account.entity';
+import { Budget } from './budget/entities/budget.entity';
+import { BudgetAlert } from './budget/entities/budget-alert.entity';
+import { WishItem } from './wish-item/entities/wish-item.entity';
+import { SavingsGoal } from './savings-goal/entities/savings-goal.entity';
 
 @Module({
   imports: [
@@ -17,7 +21,7 @@ import { BankAccount } from './bank-account/entities/bank-account.entity';
     TypeOrmModule.forRoot({
       database: './src/database/tknfinance.sqlite',
       type: 'sqlite',
-      entities: [Category, Subcategory, Transaction, BankAccount],
+      entities: [Category, Subcategory, Transaction, BankAccount, Budget, BudgetAlert, WishItem, SavingsGoal],
       synchronize: true,
     }),
     SubcategoryModule,
