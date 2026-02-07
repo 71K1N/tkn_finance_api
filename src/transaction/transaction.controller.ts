@@ -42,10 +42,11 @@ export class TransactionController {
 
   @Patch(':id')
   update(
+    @User() user: any,
     @Param('id') id: string,
     @Body() updateTransactionDto: UpdateTransactionDto,
   ) {
-    return this.transactionService.update(+id, updateTransactionDto);
+    return this.transactionService.update(+id, updateTransactionDto, user?.id);
   }
 
   @Delete(':id')
@@ -55,9 +56,10 @@ export class TransactionController {
 
   @Post(':id/payment')
   payment(
+    @User() user: any,
     @Param('id') id: string,
     @Body() paymentDto: PaymentTransactionDto,
   ) {
-    return this.transactionService.payment(+id, paymentDto);
+    return this.transactionService.payment(+id, paymentDto, user?.id);
   }
 }

@@ -46,6 +46,8 @@ export class TransactionService {
 
       // Handle transfer specially: debit source account and credit target account
       const t = (createTransactionDto.type || '').toLowerCase();
+      const userId = (createTransactionDto as any).user_id || null;
+
       if (t === 'transfer') {
         const targetId = createTransactionDto.target_account_id;
         if (!targetId) {
@@ -67,6 +69,8 @@ export class TransactionService {
           ...createTransactionDto,
           account_id: createTransactionDto.account_id,
           target_account_id: targetId,
+          created_by: userId,
+          updated_by: userId,
         } as any);
 
         // Create target transaction (transfer-in)
@@ -75,6 +79,8 @@ export class TransactionService {
           account_id: targetId,
           target_account_id: createTransactionDto.account_id,
           type: 'transfer',
+          created_by: userId,
+          updated_by: userId,
         } as any);
 
         // Update balances
@@ -89,7 +95,11 @@ export class TransactionService {
       }
 
       // Persist the transaction first (non-transfer)
-      const saved = await trxRepo.save(createTransactionDto as any);
+      const saved = await trxRepo.save({
+        ...(createTransactionDto as any),
+        created_by: userId,
+        updated_by: userId,
+      } as any);
 
       // Update balance depending on transaction type
       if (t === 'income') {
@@ -142,23 +152,28 @@ export class TransactionService {
     return null;
   }
 
-  update(id: number, updateTransactionDto: UpdateTransactionDto) {
-    return this.transactionRepository.update(id, updateTransactionDto);
+  update(id: number, updateTransactionDto: UpdateTransactionDto, userId?: number) {
+    const payload = { ...(updateTransactionDto as any) };
+    if (userId) payload.updated_by = userId;
+    return this.transactionRepository.update(id, payload);
   }
 
   remove(id: number) {
     return this.transactionRepository.delete(id);
   }
 
-  async payment(id: number, paymentDto: PaymentTransactionDto) {
+  async payment(id: number, paymentDto: PaymentTransactionDto, userId?: number) {
     const transaction = await this.findOne(id);
     if (!transaction) {
       throw new Error('Transaction not found');
     }
 
-    return this.transactionRepository.update(id, {
+    const payload: any = {
       payment_date: paymentDto.payment_date || new Date(),
-      paid_amount: paymentDto.paid_amount
-    });
+      paid_amount: paymentDto.paid_amount,
+    };
+    if (userId) payload.updated_by = userId;
+
+    return this.transactionRepository.update(id, payload);
   }
 }

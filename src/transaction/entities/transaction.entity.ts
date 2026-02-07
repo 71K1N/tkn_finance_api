@@ -49,4 +49,10 @@ export class Transaction {
 
   @UpdateDateColumn({ type: 'datetime' })
   updated_at: Date;
+
+  @Column('int', { nullable: true })
+  created_by: number | null;
+
+  @Column('int', { nullable: true })
+  updated_by: number | null;
 }
