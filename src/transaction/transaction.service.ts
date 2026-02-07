@@ -6,15 +6,46 @@ import { Transaction } from './entities/transaction.entity';
 import { Repository } from 'typeorm';
 import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
+import { BudgetService } from '../budget/budget.service';
 
 @Injectable()
 export class TransactionService {
   constructor(
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
+    private readonly budgetService: BudgetService,
   ) {}
-  create(createTransactionDto: CreateTransactionDto) {
-    return this.transactionRepository.save(createTransactionDto);
+
+  /**
+   * Create a transaction and trigger budget threshold checks
+   */
+  async create(createTransactionDto: CreateTransactionDto) {
+    const transaction = await this.transactionRepository.save(createTransactionDto);
+
+    // If this is an expense transaction, check budget thresholds
+    if (createTransactionDto.type === 'expense' && transaction.user_id) {
+      try {
+        // Get current month in YYYY-MM format
+        const now = new Date();
+        const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        // Find budgets for this user in current month
+        const budgets = await this.budgetService.findByMonth(transaction.user_id, month);
+
+        // For each budget, check thresholds
+        for (const budget of budgets) {
+          // Update spent amount first
+          await this.budgetService.updateSpent(budget.id);
+          // Then check if thresholds crossed
+          await this.budgetService.checkThresholds(budget.id);
+        }
+      } catch (error) {
+        // Log error but don't fail the transaction creation
+        console.error('Error checking budget thresholds:', error);
+      }
+    }
+
+    return transaction;
   }
 
   async findAll(): Promise<TransactionResponseDto[]> {
