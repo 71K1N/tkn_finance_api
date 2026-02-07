@@ -25,6 +25,16 @@ export class BankAccountController {
     return this.bankAccountService.findAll();
   }
 
+  @Get(':id/balance')
+  getBalance(@Param('id') id: string) {
+    return this.bankAccountService.getBalance(+id);
+  }
+
+  @Get(':id/transactions')
+  getTransactions(@Param('id') id: string) {
+    return this.bankAccountService.getTransactions(+id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.bankAccountService.findOne(+id);

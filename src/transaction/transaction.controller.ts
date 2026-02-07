@@ -6,19 +6,27 @@ import {
   Param,
   Patch,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import { TransactionService } from './transaction.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
+import { AuthGuard } from '../common/auth.guard';
+import { User } from '../common/user.decorator';
 
+@UseGuards(AuthGuard)
 @Controller('transaction')
 export class TransactionController {
   constructor(private readonly transactionService: TransactionService) {}
 
   @Post()
-  create(@Body() createTransactionDto: CreateTransactionDto) {
+  create(@User() user: any, @Body() createTransactionDto: CreateTransactionDto) {
+    // user is injected by AuthGuard. Assign user_id from authenticated user for data isolation.
+    if (user && user.id) {
+      createTransactionDto.user_id = user.id;
+    }
     return this.transactionService.create(createTransactionDto);
   }
 
