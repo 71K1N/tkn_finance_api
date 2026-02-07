@@ -1,5 +1,5 @@
 import { Category } from 'src/category/entities/category.entity';
-import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity()
 export class Subcategory {
@@ -18,4 +18,16 @@ export class Subcategory {
   @ManyToOne(() => Category)
   @JoinColumn({ name: 'categoryId' })
   category: Category;
+
+  @CreateDateColumn({ type: 'datetime' })
+  created_at: Date;
+
+  @UpdateDateColumn({ type: 'datetime' })
+  updated_at: Date;
+
+  @Column('int', { nullable: true })
+  created_by: number | null;
+
+  @Column('int', { nullable: true })
+  updated_by: number | null;
 }

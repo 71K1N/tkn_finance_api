@@ -27,6 +27,7 @@
     "@nestjs/typeorm": "^10.0.2",
     "class-validator": "^0.14.1",
     "reflect-metadata": "^0.2.0",
+    "class-transformer": "^0.5.1",
     "rxjs": "^7.8.1",
     "sqlite3": "^5.1.7",
     "typeorm": "^0.3.20"
@@ -64,6 +65,14 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/$1"
+    },
+    "globals": {
+      "ts-jest": {
+        "tsconfig": "tsconfig.json"
+      }
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
