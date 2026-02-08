@@ -6,6 +6,7 @@ import { Transaction } from './entities/transaction.entity';
 import { Repository } from 'typeorm';
 import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
+import { BudgetService } from '../budget/budget.service';
 import { BankAccount } from 'src/bank-account/entities/bank-account.entity';
 import { Subcategory } from 'src/subcategory/entities/subcategory.entity';
 
@@ -14,6 +15,7 @@ export class TransactionService {
   constructor(
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
+    private readonly budgetService: BudgetService,
   ) {}
   async create(createTransactionDto: CreateTransactionDto) {
     // Use a transaction to ensure atomic save + balance update
