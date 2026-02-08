@@ -1,0 +1,97 @@
+﻿[
+  {
+    "id": 1,
+    "title": "Add minimal auth stub / user context injection",
+    "status": "in-progress",
+    "paths": [
+      "src/main.ts",
+      "src/app.module.ts",
+      "src/common/auth.guard.ts (new)",
+      "src/common/user.decorator.ts (new)",
+      "src/transaction/transaction.controller.ts"
+    ]
+  },
+  {
+    "id": 2,
+    "title": "Implement atomic account balance updates in TransactionService",
+    "status": "not-started",
+    "paths": [
+      "src/transaction/transaction.service.ts",
+      "src/bank-account/bank-account.service.ts",
+      "src/bank-account/entities/bank-account.entity.ts",
+      "src/transaction/entities/transaction.entity.ts"
+    ]
+  },
+  {
+    "id": 3,
+    "title": "Support transfers between accounts (linked transactions)",
+    "status": "not-started",
+    "paths": [
+      "src/transaction/entities/transaction.entity.ts",
+      "src/transaction/dto/create-transaction.dto.ts",
+      "src/transaction/transaction.service.ts",
+      "src/transaction/transaction.controller.ts"
+    ]
+  },
+  {
+    "id": 4,
+    "title": "Add business validation for transactions (amounts, accounts, categories)",
+    "status": "not-started",
+    "paths": [
+      "src/transaction/dto/create-transaction.dto.ts",
+      "src/transaction/dto/update-transaction.dto.ts",
+      "src/transaction/transaction.service.ts"
+    ]
+  },
+  {
+    "id": 5,
+    "title": "Enforce category/subcategory integrity when creating transactions",
+    "status": "not-started",
+    "paths": [
+      "src/transaction/transaction.service.ts",
+      "src/subcategory/entities/subcategory.entity.ts",
+      "src/category/entities/category.entity.ts"
+    ]
+  },
+  {
+    "id": 6,
+    "title": "Expose reporting endpoints: account balance and transaction list",
+    "status": "not-started",
+    "paths": [
+      "src/bank-account/bank-account.controller.ts",
+      "src/bank-account/bank-account.service.ts",
+      "src/transaction/transaction.controller.ts"
+    ]
+  },
+  {
+    "id": 7,
+    "title": "Add integration tests for P1 core flow (account + transactions + balances)",
+    "status": "not-started",
+    "paths": [
+      "test/app.e2e-spec.ts",
+      "src/transaction/transaction.service.ts",
+      "src/bank-account/bank-account.service.ts",
+      "specs/001-personal-finance-api/spec.md"
+    ]
+  },
+  {
+    "id": 8,
+    "title": "Add error handling and clear API validation responses",
+    "status": "not-started",
+    "paths": [
+      "src/transaction/transaction.controller.ts",
+      "src/bank-account/bank-account.controller.ts",
+      "src/common/filters/http-exception.filter.ts (new)"
+    ]
+  },
+  {
+    "id": 9,
+    "title": "Schema tweaks and audit/log fields for transactional integrity",
+    "status": "not-started",
+    "paths": [
+      "src/transaction/entities/transaction.entity.ts",
+      "src/bank-account/entities/bank-account.entity.ts",
+      "src/app.module.ts"
+    ]
+  }
+]
