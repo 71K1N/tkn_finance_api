@@ -6,6 +6,8 @@ import { BudgetAlert, AlertLevel } from './entities/budget-alert.entity';
 import { Transaction } from '../transaction/entities/transaction.entity';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
+import { WebhookService } from '../webhook/webhook.service';
+import { WebhookEventType } from '../webhook/entities/webhook-subscription.entity';
 
 @Injectable()
 export class BudgetService {
@@ -16,6 +18,7 @@ export class BudgetService {
     private budgetAlertRepository: Repository<BudgetAlert>,
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
+    private webhookService: WebhookService,
   ) {}
 
   /**
@@ -190,6 +193,17 @@ export class BudgetService {
         });
         const saved = await this.budgetAlertRepository.save(alert);
         newAlerts.push(saved);
+        await this.webhookService.emitEvent(
+          WebhookEventType.BUDGET_THRESHOLD_OVERAGE,
+          budget.userId,
+          {
+            budgetId,
+            percentageUsed,
+            spent: budget.spent,
+            amount: budget.amount,
+            alertLevel: AlertLevel.OVERAGE,
+          },
+        );
       }
     }
     // Check for exceeded (100%)
@@ -207,6 +221,17 @@ export class BudgetService {
         });
         const saved = await this.budgetAlertRepository.save(alert);
         newAlerts.push(saved);
+        await this.webhookService.emitEvent(
+          WebhookEventType.BUDGET_THRESHOLD_EXCEEDED,
+          budget.userId,
+          {
+            budgetId,
+            percentageUsed,
+            spent: budget.spent,
+            amount: budget.amount,
+            alertLevel: AlertLevel.EXCEEDED,
+          },
+        );
       }
     }
     // Check for warning (>= 90% and < 100%)
@@ -224,6 +249,17 @@ export class BudgetService {
         });
         const saved = await this.budgetAlertRepository.save(alert);
         newAlerts.push(saved);
+        await this.webhookService.emitEvent(
+          WebhookEventType.BUDGET_THRESHOLD_WARNING,
+          budget.userId,
+          {
+            budgetId,
+            percentageUsed,
+            spent: budget.spent,
+            amount: budget.amount,
+            alertLevel: AlertLevel.WARNING,
+          },
+        );
       }
     }
 
