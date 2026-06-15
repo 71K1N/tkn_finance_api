@@ -10,13 +10,11 @@ export class AuthGuard implements CanActivate {
       return false;
     }
 
-    // Parse Bearer token and extract user ID
     const [scheme, token] = authHeader.split(' ');
-    if (scheme !== 'Bearer') {
+    if (scheme !== 'Bearer' || !token) {
       return false;
     }
 
-    // For development: treat token as user ID
     const userId = parseInt(token, 10);
     if (isNaN(userId)) {
       return false;
