@@ -15,6 +15,8 @@ import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
+import { MongoIdPipe } from '../common/mongo-id.pipe';
+import { ObjectId } from 'mongodb';
 
 @UseGuards(AuthGuard)
 @Controller('transaction')
@@ -36,30 +38,30 @@ export class TransactionController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<TransactionResponseDto | null> {
-    return this.transactionService.findOne(+id);
+  async findOne(@Param('id', MongoIdPipe) id: ObjectId): Promise<TransactionResponseDto | null> {
+    return this.transactionService.findOne(id);
   }
 
   @Patch(':id')
   update(
     @User() user: any,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body() updateTransactionDto: UpdateTransactionDto,
   ) {
-    return this.transactionService.update(+id, updateTransactionDto, user?.id);
+    return this.transactionService.update(id, updateTransactionDto, user?.id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.transactionService.remove(+id);
+  remove(@Param('id', MongoIdPipe) id: ObjectId) {
+    return this.transactionService.remove(id);
   }
 
   @Post(':id/payment')
   payment(
     @User() user: any,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body() paymentDto: PaymentTransactionDto,
   ) {
-    return this.transactionService.payment(+id, paymentDto, user?.id);
+    return this.transactionService.payment(id, paymentDto, user?.id);
   }
 }

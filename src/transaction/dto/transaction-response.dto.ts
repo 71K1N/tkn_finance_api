@@ -1,5 +1,5 @@
 export class CategoryResponseDto {
-  id: number;
+  id: string;
   name: string;
   description: string;
   created_at: Date;
@@ -9,10 +9,10 @@ export class CategoryResponseDto {
 }
 
 export class SubcategoryResponseDto {
-  id: number;
+  id: string;
   name: string;
   description: string;
-  categoryId: number;
+  categoryId: string;
   category: CategoryResponseDto;
   created_at: Date;
   updated_at: Date;
@@ -21,7 +21,7 @@ export class SubcategoryResponseDto {
 }
 
 export class BankAccountResponseDto {
-  id: number;
+  id: string;
   description: string;
   balance: number;
   created_at: Date;
@@ -31,16 +31,17 @@ export class BankAccountResponseDto {
 }
 
 export class TransactionResponseDto {
-  id: number;
+  id: string;
   name: string;
   description: string;
   amount: number;
   due_date: Date;
   payment_date: Date;
-  subcategory_id: number;
-  category_id?: number;
+  subcategory_id?: string | null;
+  category_id?: string | null;
   user_id: number;
-  account_id: number;
+  account_id: string;
+  target_account_id?: string | null;
   paid_amount: number;
   type: string;
   created_at: Date;

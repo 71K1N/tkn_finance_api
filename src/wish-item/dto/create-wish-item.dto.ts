@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsPositive, IsOptional, IsDateString, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsPositive, IsOptional, IsDateString, IsEnum, IsMongoId } from 'class-validator';
 
 export class CreateWishItemDto {
   @IsString()
@@ -16,6 +16,6 @@ export class CreateWishItemDto {
   priority?: 'low' | 'medium' | 'high';
 
   @IsOptional()
-  @IsNumber()
-  linkedGoalId?: number;
+  @IsMongoId()
+  linkedGoalId?: string;
 }

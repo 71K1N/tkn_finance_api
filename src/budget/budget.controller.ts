@@ -11,12 +11,14 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { ObjectId } from 'mongodb';
 import { BudgetService } from './budget.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
-import { BudgetResponseDto } from './dto/budget-response.dto';
+import { BudgetResponseDto, BudgetAlertResponseDto } from './dto/budget-response.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
+import { MongoIdPipe } from '../common/mongo-id.pipe';
 
 @Controller('budget')
 @UseGuards(AuthGuard)
@@ -60,35 +62,23 @@ export class BudgetController {
   @Get(':id')
   async findOne(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
   ): Promise<BudgetResponseDto> {
-    const budgetId = parseInt(id, 10);
-    if (isNaN(budgetId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
-
-    const budget = await this.budgetService.findOne(budgetId, userId);
+    const budget = await this.budgetService.findOne(id, userId);
     if (!budget) {
       throw new NotFoundException('Budget not found');
     }
 
     // Recalculate spent amount before returning
-    await this.budgetService.updateSpent(budgetId);
-    const updatedBudget = await this.budgetService.findOne(budgetId, userId);
+    await this.budgetService.updateSpent(id);
+    const updatedBudget = await this.budgetService.findOne(id, userId);
 
     // Fetch alerts
-    const alerts = await this.budgetService.getAlerts(budgetId);
+    const alerts = await this.budgetService.getAlerts(id);
 
     return new BudgetResponseDto({
       ...updatedBudget,
-      alerts: alerts.map((a) => ({
-        id: a.id,
-        budgetId: a.budgetId,
-        threshold: a.threshold,
-        alertLevel: a.alertLevel,
-        triggeredAt: a.triggeredAt,
-        acknowledged: a.acknowledged,
-      })),
+      alerts: alerts.map((a) => new BudgetAlertResponseDto(a)),
     });
   }
 
@@ -99,16 +89,11 @@ export class BudgetController {
   @Patch(':id')
   async update(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body() updateBudgetDto: UpdateBudgetDto,
   ): Promise<BudgetResponseDto> {
-    const budgetId = parseInt(id, 10);
-    if (isNaN(budgetId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
-
     try {
-      const budget = await this.budgetService.update(budgetId, userId, updateBudgetDto);
+      const budget = await this.budgetService.update(id, userId, updateBudgetDto);
       return new BudgetResponseDto(budget);
     } catch (error) {
       throw new NotFoundException('Budget not found');
@@ -122,15 +107,10 @@ export class BudgetController {
   @Delete(':id')
   async delete(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
   ): Promise<{ message: string }> {
-    const budgetId = parseInt(id, 10);
-    if (isNaN(budgetId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
-
     try {
-      await this.budgetService.delete(budgetId, userId);
+      await this.budgetService.delete(id, userId);
       return { message: 'Budget deleted successfully' };
     } catch (error) {
       throw new NotFoundException('Budget not found');
@@ -151,14 +131,7 @@ export class BudgetController {
     totalSpent: number;
     remaining: number;
     percentageUsed: number;
-    alerts: Array<{
-      id: number;
-      budgetId: number;
-      threshold: number;
-      alertLevel: string;
-      triggeredAt: Date;
-      acknowledged: boolean;
-    }>;
+    alerts: BudgetAlertResponseDto[];
   }> {
     if (!month || !month.match(/^\d{4}-\d{2}$/)) {
       throw new BadRequestException('month query parameter required in YYYY-MM format');
@@ -172,14 +145,7 @@ export class BudgetController {
       totalSpent: report.totalSpent,
       remaining: report.remaining,
       percentageUsed: report.percentageUsed,
-      alerts: report.alerts.map((a) => ({
-        id: a.id,
-        budgetId: a.budgetId,
-        threshold: a.threshold,
-        alertLevel: a.alertLevel,
-        triggeredAt: a.triggeredAt,
-        acknowledged: a.acknowledged,
-      })),
+      alerts: report.alerts.map((a) => new BudgetAlertResponseDto(a)),
     };
   }
 
@@ -208,15 +174,10 @@ export class BudgetController {
   @Patch('alert/:alertId/acknowledge')
   async acknowledgeAlert(
     @User() userId: number,
-    @Param('alertId') alertId: string,
+    @Param('alertId', MongoIdPipe) alertId: ObjectId,
   ): Promise<{ message: string }> {
-    const id = parseInt(alertId, 10);
-    if (isNaN(id)) {
-      throw new BadRequestException('alertId must be a valid number');
-    }
-
     try {
-      await this.budgetService.acknowledgeAlert(id);
+      await this.budgetService.acknowledgeAlert(alertId);
       return { message: 'Alert acknowledged' };
     } catch (error) {
       throw new NotFoundException('Alert not found');

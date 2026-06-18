@@ -1,25 +1,26 @@
-import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, ObjectIdColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 @Entity()
 export class Category {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column({ length: 255 })
+  @Column()
   name: string;
 
-  @Column({ length: 255 })
+  @Column()
   description: string;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   created_at: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updated_at: Date;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   created_by: number | null;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   updated_by: number | null;
 }

@@ -13,6 +13,8 @@ import { WebhookService } from './webhook.service';
 import { CreateWebhookSubscriptionDto, WebhookSubscriptionResponseDto } from './dto/create-webhook-subscription.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
+import { ObjectId } from 'mongodb';
+import { MongoIdPipe } from '../common/mongo-id.pipe';
 
 @Controller('webhook')
 @UseGuards(AuthGuard)
@@ -43,14 +45,10 @@ export class WebhookController {
   @Delete('unsubscribe/:subscriptionId')
   async unsubscribe(
     @User() userId: number,
-    @Param('subscriptionId') subscriptionId: string,
+    @Param('subscriptionId', MongoIdPipe) subscriptionId: ObjectId,
   ): Promise<{ message: string }> {
-    const id = parseInt(subscriptionId, 10);
-    if (isNaN(id)) {
-      throw new BadRequestException('subscriptionId must be a valid number');
-    }
     try {
-      await this.webhookService.unsubscribe(userId, id);
+      await this.webhookService.unsubscribe(userId, subscriptionId);
       return { message: 'Webhook subscription deleted successfully' };
     } catch (error) {
       throw new NotFoundException('Webhook subscription not found');

@@ -1,33 +1,29 @@
-import { Category } from 'src/category/entities/category.entity';
-import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, ObjectIdColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 @Entity()
 export class Subcategory {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column({ length: 255 })
+  @Column()
   name: string;
 
-  @Column({ length: 255 })
+  @Column()
   description: string;
 
-  @Column('int')
-  categoryId: number;
+  @Column()
+  categoryId: ObjectId;
 
-  @ManyToOne(() => Category)
-  @JoinColumn({ name: 'categoryId' })
-  category: Category;
-
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   created_at: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updated_at: Date;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   created_by: number | null;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   updated_by: number | null;
 }

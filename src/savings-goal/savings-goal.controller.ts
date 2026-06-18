@@ -20,6 +20,8 @@ import {
 import { WishItemResponseDto } from '../wish-item/dto/wish-item-response.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
+import { ObjectId } from 'mongodb';
+import { MongoIdPipe } from '../common/mongo-id.pipe';
 
 @Controller('savings-goal')
 @UseGuards(AuthGuard)
@@ -47,18 +49,14 @@ export class SavingsGoalController {
   @Get(':id')
   async findOne(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
   ): Promise<SavingsGoalResponseDto & { linkedWishItems?: WishItemResponseDto[] }> {
-    const goalId = parseInt(id, 10);
-    if (isNaN(goalId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
-    const goal = await this.savingsGoalService.findOne(goalId, userId);
+    const goal = await this.savingsGoalService.findOne(id, userId);
     if (!goal) {
       throw new NotFoundException('Savings goal not found');
     }
     const wishItems = await this.savingsGoalService.getWishItems(
-      goalId,
+      id,
       userId,
     );
     return {
@@ -70,16 +68,12 @@ export class SavingsGoalController {
   @Patch(':id')
   async update(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body() updateSavingsGoalDto: UpdateSavingsGoalDto,
   ): Promise<SavingsGoalResponseDto> {
-    const goalId = parseInt(id, 10);
-    if (isNaN(goalId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
     try {
       const goal = await this.savingsGoalService.update(
-        goalId,
+        id,
         userId,
         updateSavingsGoalDto,
       );
@@ -92,14 +86,10 @@ export class SavingsGoalController {
   @Get(':id/progress')
   async getProgress(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
   ): Promise<SavingsGoalProgressDto> {
-    const goalId = parseInt(id, 10);
-    if (isNaN(goalId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
     try {
-      return await this.savingsGoalService.getProgress(goalId, userId);
+      return await this.savingsGoalService.getProgress(id, userId);
     } catch (error) {
       throw new NotFoundException('Savings goal not found');
     }
@@ -108,19 +98,15 @@ export class SavingsGoalController {
   @Post(':id/deposit')
   async deposit(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body('amount') amount: number,
   ): Promise<SavingsGoalResponseDto> {
-    const goalId = parseInt(id, 10);
-    if (isNaN(goalId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
     if (!amount || amount <= 0) {
       throw new BadRequestException('amount must be a positive number');
     }
     try {
       const goal = await this.savingsGoalService.deposit(
-        goalId,
+        id,
         userId,
         amount,
       );
@@ -138,19 +124,15 @@ export class SavingsGoalController {
   @Post(':id/withdraw')
   async withdraw(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body('amount') amount: number,
   ): Promise<SavingsGoalResponseDto> {
-    const goalId = parseInt(id, 10);
-    if (isNaN(goalId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
     if (!amount || amount <= 0) {
       throw new BadRequestException('amount must be a positive number');
     }
     try {
       const goal = await this.savingsGoalService.withdraw(
-        goalId,
+        id,
         userId,
         amount,
       );
@@ -167,14 +149,10 @@ export class SavingsGoalController {
   @Delete(':id')
   async delete(
     @User() userId: number,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
   ): Promise<{ message: string }> {
-    const goalId = parseInt(id, 10);
-    if (isNaN(goalId)) {
-      throw new BadRequestException('id must be a valid number');
-    }
     try {
-      await this.savingsGoalService.delete(goalId, userId);
+      await this.savingsGoalService.delete(id, userId);
       return { message: 'Savings goal deleted successfully' };
     } catch (error) {
       throw new NotFoundException('Savings goal not found');

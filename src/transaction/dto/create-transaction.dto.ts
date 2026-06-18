@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsPositive, IsInt, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsPositive, IsMongoId, IsDateString } from 'class-validator';
 
 export class CreateTransactionDto {
   @IsOptional()
@@ -22,19 +22,19 @@ export class CreateTransactionDto {
   payment_date?: Date;
 
   @IsOptional()
-  @IsInt()
-  subcategory_id?: number;
+  @IsMongoId()
+  subcategory_id?: string;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber()
   user_id?: number;
 
-  @IsInt()
-  account_id: number;
+  @IsMongoId()
+  account_id: string;
 
   @IsOptional()
-  @IsInt()
-  target_account_id?: number;
+  @IsMongoId()
+  target_account_id?: string;
 
   @IsOptional()
   @IsNumber()

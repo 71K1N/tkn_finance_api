@@ -1,5 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn, CreateDateColumn } from 'typeorm';
-import { Budget } from './budget.entity';
+import { Column, Entity, ObjectIdColumn, CreateDateColumn } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 export enum AlertLevel {
   WARNING = 'warning',      // 90% threshold
@@ -9,25 +9,21 @@ export enum AlertLevel {
 
 @Entity()
 export class BudgetAlert {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column('int')
-  budgetId: number;
+  @Column()
+  budgetId: ObjectId;
 
-  @ManyToOne(() => Budget)
-  @JoinColumn({ name: 'budgetId' })
-  budget: Budget;
-
-  @Column('float')
+  @Column()
   threshold: number; // percentage (90, 100, etc.)
 
-  @Column({ type: 'varchar', length: 20, enum: AlertLevel })
+  @Column()
   alertLevel: AlertLevel;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   triggeredAt: Date;
 
-  @Column('boolean', { default: false })
+  @Column({ default: false })
   acknowledged: boolean;
 }

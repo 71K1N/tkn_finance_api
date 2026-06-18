@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { BankAccount } from './entities/bank-account.entity';
 import { Repository } from 'typeorm';
 import { Transaction } from 'src/transaction/entities/transaction.entity';
+import { ObjectId } from 'mongodb';
 
 @Injectable()
 export class BankAccountService {
@@ -22,19 +23,19 @@ export class BankAccountService {
     return this.bankAccountRepository.find();
   }
 
-  findOne(id: number) {
+  findOne(id: ObjectId) {
     return this.bankAccountRepository.find({ where: { id } });
   }
 
-  update(id: number, updateBankAccountDto: UpdateBankAccountDto) {
+  update(id: ObjectId, updateBankAccountDto: UpdateBankAccountDto) {
     return this.bankAccountRepository.update(id, updateBankAccountDto);
   }
 
-  remove(id: number) {
+  remove(id: ObjectId) {
     return this.bankAccountRepository.delete(id);
   }
 
-  async getBalance(id: number) {
+  async getBalance(id: ObjectId) {
     const account = await this.bankAccountRepository.findOne({ where: { id } });
     if (!account) {
       throw new NotFoundException('Account not found');
@@ -42,7 +43,7 @@ export class BankAccountService {
     return { account_id: account.id, balance: account.balance };
   }
 
-  async getTransactions(accountId: number) {
+  async getTransactions(accountId: ObjectId) {
     return this.transactionRepository.find({ where: { account_id: accountId } });
   }
 }

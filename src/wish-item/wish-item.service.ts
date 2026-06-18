@@ -6,6 +6,7 @@ import { CreateWishItemDto } from './dto/create-wish-item.dto';
 import { UpdateWishItemDto } from './dto/update-wish-item.dto';
 import { WebhookService } from '../webhook/webhook.service';
 import { WebhookEventType } from '../webhook/entities/webhook-subscription.entity';
+import { ObjectId } from 'mongodb';
 
 @Injectable()
 export class WishItemService {
@@ -47,7 +48,7 @@ export class WishItemService {
     });
   }
 
-  async findOne(id: number, userId: number): Promise<WishItem | null> {
+  async findOne(id: ObjectId, userId: number): Promise<WishItem | null> {
     const wishItem = await this.wishItemRepository.findOne({
       where: { id },
     });
@@ -57,7 +58,7 @@ export class WishItemService {
     return null;
   }
 
-  async update(id: number, userId: number, updateWishItemDto: UpdateWishItemDto): Promise<WishItem> {
+  async update(id: ObjectId, userId: number, updateWishItemDto: UpdateWishItemDto): Promise<WishItem> {
     const wishItem = await this.findOne(id, userId);
     if (!wishItem) {
       throw new Error('Wish item not found');
@@ -82,7 +83,7 @@ export class WishItemService {
   }
 
   async updateStatus(
-    id: number,
+    id: ObjectId,
     userId: number,
     newStatus: 'active' | 'completed' | 'abandoned' | 'on_hold',
   ): Promise<WishItem> {
@@ -110,7 +111,7 @@ export class WishItemService {
     return updated;
   }
 
-  async linkToGoal(id: number, userId: number, goalId: number): Promise<WishItem> {
+  async linkToGoal(id: ObjectId, userId: number, goalId: ObjectId): Promise<WishItem> {
     const wishItem = await this.findOne(id, userId);
     if (!wishItem) {
       throw new Error('Wish item not found');
@@ -121,7 +122,7 @@ export class WishItemService {
     return this.wishItemRepository.save(wishItem);
   }
 
-  async unlinkFromGoal(id: number, userId: number): Promise<WishItem> {
+  async unlinkFromGoal(id: ObjectId, userId: number): Promise<WishItem> {
     const wishItem = await this.findOne(id, userId);
     if (!wishItem) {
       throw new Error('Wish item not found');
@@ -132,7 +133,7 @@ export class WishItemService {
     return this.wishItemRepository.save(wishItem);
   }
 
-  async delete(id: number, userId: number): Promise<void> {
+  async delete(id: ObjectId, userId: number): Promise<void> {
     const wishItem = await this.findOne(id, userId);
     if (!wishItem) {
       throw new Error('Wish item not found');
@@ -140,7 +141,7 @@ export class WishItemService {
     await this.wishItemRepository.delete(id);
   }
 
-  async getByGoal(goalId: number): Promise<WishItem[]> {
+  async getByGoal(goalId: ObjectId): Promise<WishItem[]> {
     return this.wishItemRepository.find({
       where: { linkedGoalId: goalId },
     });

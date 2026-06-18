@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, ObjectIdColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 export enum WishItemStatus {
   ACTIVE = 'active',
@@ -15,39 +16,39 @@ export enum WishItemPriority {
 
 @Entity()
 export class WishItem {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column('int')
+  @Column()
   userId: number;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column()
   name: string;
 
-  @Column('float')
+  @Column()
   estimatedCost: number;
 
-  @Column('date')
+  @Column()
   targetDate: Date;
 
-  @Column({ type: 'varchar', length: 20, enum: WishItemStatus, default: WishItemStatus.ACTIVE })
+  @Column()
   status: WishItemStatus;
 
-  @Column({ type: 'varchar', length: 10, enum: WishItemPriority, default: WishItemPriority.MEDIUM })
+  @Column()
   priority: WishItemPriority;
 
-  @Column('int', { nullable: true })
-  linkedGoalId: number | null;
+  @Column({ nullable: true })
+  linkedGoalId: ObjectId | null;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   created_at: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updated_at: Date;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   created_by: number | null;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   updated_by: number | null;
 }

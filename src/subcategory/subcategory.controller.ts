@@ -8,6 +8,8 @@ import {
   Delete,
   UseGuards,
 } from '@nestjs/common';
+import { ObjectId } from 'mongodb';
+import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { SubcategoryService } from './subcategory.service';
 import { CreateSubcategoryDto } from './dto/create-subcategory.dto';
 import { UpdateSubcategoryDto } from './dto/update-subcategory.dto';
@@ -34,24 +36,24 @@ export class SubcategoryController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.subcategoryService.findOne(+id);
+  findOne(@Param('id', MongoIdPipe) id: ObjectId) {
+    return this.subcategoryService.findOne(id);
   }
 
   @Patch(':id')
   update(
     @User() user: any,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body() updateSubcategoryDto: UpdateSubcategoryDto,
   ) {
     if (user && user.id) {
       (updateSubcategoryDto as any).updated_by = user.id;
     }
-    return this.subcategoryService.update(+id, updateSubcategoryDto);
+    return this.subcategoryService.update(id, updateSubcategoryDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.subcategoryService.remove(+id);
+  remove(@Param('id', MongoIdPipe) id: ObjectId) {
+    return this.subcategoryService.remove(id);
   }
 }

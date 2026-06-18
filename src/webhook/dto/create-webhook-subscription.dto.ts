@@ -10,7 +10,7 @@ export class CreateWebhookSubscriptionDto {
 }
 
 export class WebhookSubscriptionResponseDto {
-  id: number;
+  id: string;
   userId: number;
   eventType: WebhookEventType;
   endpoint: string;
@@ -20,5 +20,8 @@ export class WebhookSubscriptionResponseDto {
 
   constructor(subscription: any) {
     Object.assign(this, subscription);
+    if (subscription?.id?.toString) {
+      this.id = subscription.id.toString();
+    }
   }
 }

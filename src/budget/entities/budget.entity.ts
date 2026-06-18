@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, ObjectIdColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 export enum RolloverPolicy {
   NO_ROLLOVER = 'no_rollover',
@@ -7,36 +8,36 @@ export enum RolloverPolicy {
 
 @Entity()
 export class Budget {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column('int')
+  @Column()
   userId: number;
 
-  @Column('int')
-  categoryId: number;
+  @Column()
+  categoryId: ObjectId;
 
-  @Column({ type: 'varchar', length: 7 }) // YYYY-MM format
+  @Column()
   month: string;
 
-  @Column('float')
+  @Column()
   amount: number;
 
-  @Column('float', { default: 0 })
+  @Column({ default: 0 })
   spent: number; // computed from transactions
 
-  @Column({ type: 'varchar', length: 20, enum: RolloverPolicy, default: RolloverPolicy.NO_ROLLOVER })
+  @Column()
   rolloverPolicy: RolloverPolicy;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   created_at: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updated_at: Date;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   created_by: number | null;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   updated_by: number | null;
 }

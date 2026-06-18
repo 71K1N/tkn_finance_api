@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual, LessThanOrEqual, Between } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
+import { ObjectId } from 'mongodb';
 import { Budget, RolloverPolicy } from './entities/budget.entity';
 import { BudgetAlert, AlertLevel } from './entities/budget-alert.entity';
 import { Transaction } from '../transaction/entities/transaction.entity';
@@ -46,7 +47,6 @@ export class BudgetService {
   async findByMonth(userId: number, month: string): Promise<Budget[]> {
     return this.budgetRepository.find({
       where: { userId, month },
-      relations: ['alerts'],
     });
   }
 
@@ -60,7 +60,6 @@ export class BudgetService {
   ): Promise<Budget[]> {
     return this.budgetRepository.find({
       where: { userId, month: Between(startMonth, endMonth) },
-      relations: ['alerts'],
       order: { month: 'DESC' },
     });
   }
@@ -68,10 +67,9 @@ export class BudgetService {
   /**
    * Find budget by ID and verify ownership
    */
-  async findOne(id: number, userId: number): Promise<Budget | null> {
+  async findOne(id: ObjectId, userId: number): Promise<Budget | null> {
     const budget = await this.budgetRepository.findOne({
       where: { id },
-      relations: ['alerts'],
     });
 
     if (budget && budget.userId === userId) {
@@ -84,7 +82,7 @@ export class BudgetService {
    * Update budget details (amount, rollover policy)
    */
   async update(
-    id: number,
+    id: ObjectId,
     userId: number,
     updateBudgetDto: UpdateBudgetDto,
   ): Promise<Budget> {
@@ -109,7 +107,7 @@ export class BudgetService {
   /**
    * Delete budget
    */
-  async delete(id: number, userId: number): Promise<void> {
+  async delete(id: ObjectId, userId: number): Promise<void> {
     const budget = await this.findOne(id, userId);
     if (!budget) {
       throw new Error('Budget not found');
@@ -123,7 +121,7 @@ export class BudgetService {
   /**
    * Calculate spent amount for a budget based on expenses in that category/month
    */
-  async calculateSpent(budgetId: number): Promise<number> {
+  async calculateSpent(budgetId: ObjectId): Promise<number> {
     const budget = await this.budgetRepository.findOne({ where: { id: budgetId } });
     if (!budget) {
       return 0;
@@ -136,24 +134,21 @@ export class BudgetService {
     endDate.setMonth(endDate.getMonth() + 1);
 
     // Sum all expense transactions for this category in this month
-    const result = await this.transactionRepository
-      .createQueryBuilder('t')
-      .select('SUM(CAST(t.amount AS REAL))', 'total')
-      .where('t.type = :type', { type: 'expense' })
-      .andWhere('t.subcategoryId IN (:...subcategoryIds)', {
-        subcategoryIds: [budget.categoryId], // Simplified: assume direct mapping
-      })
-      .andWhere('t.created_at >= :startDate', { startDate })
-      .andWhere('t.created_at < :endDate', { endDate })
-      .getRawOne();
+    const transactions = await this.transactionRepository.find({
+      where: {
+        type: 'expense',
+        subcategory_id: budget.categoryId,
+        created_at: Between(startDate, endDate),
+      },
+    });
 
-    return result?.total ? parseFloat(result.total) : 0;
+    return transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
   }
 
   /**
    * Update the spent amount for a budget by recalculating from transactions
    */
-  async updateSpent(budgetId: number): Promise<Budget> {
+  async updateSpent(budgetId: ObjectId): Promise<Budget> {
     const spent = await this.calculateSpent(budgetId);
     const budget = await this.budgetRepository.findOne({ where: { id: budgetId } });
 
@@ -169,7 +164,7 @@ export class BudgetService {
    * Check if budget has crossed thresholds and create alerts
    * Returns newly created alerts
    */
-  async checkThresholds(budgetId: number): Promise<BudgetAlert[]> {
+  async checkThresholds(budgetId: ObjectId): Promise<BudgetAlert[]> {
     const budget = await this.budgetRepository.findOne({ where: { id: budgetId } });
     if (!budget) {
       return [];
@@ -269,7 +264,7 @@ export class BudgetService {
   /**
    * Get all alerts for a budget
    */
-  async getAlerts(budgetId: number): Promise<BudgetAlert[]> {
+  async getAlerts(budgetId: ObjectId): Promise<BudgetAlert[]> {
     return this.budgetAlertRepository.find({
       where: { budgetId },
       order: { triggeredAt: 'DESC' },
@@ -279,7 +274,7 @@ export class BudgetService {
   /**
    * Acknowledge an alert
    */
-  async acknowledgeAlert(alertId: number): Promise<BudgetAlert> {
+  async acknowledgeAlert(alertId: ObjectId): Promise<BudgetAlert> {
     const alert = await this.budgetAlertRepository.findOne({ where: { id: alertId } });
     if (!alert) {
       throw new Error('Alert not found');
@@ -317,13 +312,12 @@ export class BudgetService {
     const percentageUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
     // Fetch all alerts for this month
-    const alerts = await this.budgetAlertRepository
-      .createQueryBuilder('a')
-      .where('a.budgetId IN (:...budgetIds)', {
-        budgetIds: budgets.map((b) => b.id),
-      })
-      .orderBy('a.triggeredAt', 'DESC')
-      .getMany();
+    const alerts = await this.budgetAlertRepository.find({
+      where: {
+        budgetId: In(budgets.map((b) => b.id)),
+      },
+      order: { triggeredAt: 'DESC' },
+    });
 
     return {
       budgets,

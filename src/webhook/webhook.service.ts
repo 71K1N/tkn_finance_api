@@ -6,6 +6,7 @@ import {
   WebhookSubscription,
   WebhookEventType,
 } from './entities/webhook-subscription.entity';
+import { ObjectId } from 'mongodb';
 
 interface WebhookPayload {
   event_type: string;
@@ -38,7 +39,7 @@ export class WebhookService {
     return this.subscriptionRepository.save(subscription);
   }
 
-  async unsubscribe(userId: number, subscriptionId: number): Promise<void> {
+  async unsubscribe(userId: number, subscriptionId: ObjectId): Promise<void> {
     await this.subscriptionRepository.delete({
       id: subscriptionId,
       userId,

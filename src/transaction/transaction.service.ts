@@ -9,6 +9,8 @@ import { TransactionResponseDto } from './dto/transaction-response.dto';
 import { BudgetService } from '../budget/budget.service';
 import { BankAccount } from 'src/bank-account/entities/bank-account.entity';
 import { Subcategory } from 'src/subcategory/entities/subcategory.entity';
+import { ObjectId } from 'mongodb';
+import { toObjectId } from '../common/mongo.util';
 
 @Injectable()
 export class TransactionService {
@@ -23,7 +25,7 @@ export class TransactionService {
       const accountRepo = manager.getRepository(BankAccount);
       const trxRepo = manager.getRepository(Transaction);
 
-      const account = await accountRepo.findOne({ where: { id: createTransactionDto.account_id } });
+      const account = await accountRepo.findOne({ where: { id: toObjectId(createTransactionDto.account_id) } });
       if (!account) {
         throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
       }
@@ -37,12 +39,9 @@ export class TransactionService {
       // If subcategory provided, ensure it exists and is linked to a category
       if (createTransactionDto.subcategory_id) {
         const subcatRepo = manager.getRepository(Subcategory);
-        const subcat = await subcatRepo.findOne({ where: { id: createTransactionDto.subcategory_id }, relations: ['category'] });
+        const subcat = await subcatRepo.findOne({ where: { id: toObjectId(createTransactionDto.subcategory_id) } });
         if (!subcat) {
           throw new HttpException('Subcategory not found', HttpStatus.NOT_FOUND);
-        }
-        if (!subcat.category) {
-          throw new HttpException('Subcategory has no parent category', HttpStatus.BAD_REQUEST);
         }
       }
 
@@ -56,7 +55,7 @@ export class TransactionService {
           throw new HttpException('Target account required for transfer', HttpStatus.BAD_REQUEST);
         }
 
-        const targetAccount = await accountRepo.findOne({ where: { id: targetId } });
+        const targetAccount = await accountRepo.findOne({ where: { id: toObjectId(targetId) } });
         if (!targetAccount) {
           throw new HttpException('Target account not found', HttpStatus.NOT_FOUND);
         }
@@ -69,8 +68,8 @@ export class TransactionService {
         // Create source transaction (transfer-out)
         const sourceTx = await trxRepo.save({
           ...createTransactionDto,
-          account_id: createTransactionDto.account_id,
-          target_account_id: targetId,
+          account_id: toObjectId(createTransactionDto.account_id),
+          target_account_id: toObjectId(targetId),
           created_by: userId,
           updated_by: userId,
         } as any);
@@ -78,8 +77,8 @@ export class TransactionService {
         // Create target transaction (transfer-in)
         const targetTx = await trxRepo.save({
           ...createTransactionDto,
-          account_id: targetId,
-          target_account_id: createTransactionDto.account_id,
+          account_id: toObjectId(targetId),
+          target_account_id: toObjectId(createTransactionDto.account_id),
           type: 'transfer',
           created_by: userId,
           updated_by: userId,
@@ -97,11 +96,16 @@ export class TransactionService {
       }
 
       // Persist the transaction first (non-transfer)
-      const saved = await trxRepo.save({
+      const payload = {
         ...(createTransactionDto as any),
+        account_id: toObjectId(createTransactionDto.account_id),
+        subcategory_id: createTransactionDto.subcategory_id ? toObjectId(createTransactionDto.subcategory_id) : undefined,
+        target_account_id: createTransactionDto.target_account_id ? toObjectId(createTransactionDto.target_account_id) : undefined,
         created_by: userId,
         updated_by: userId,
-      } as any);
+      } as any;
+
+      const saved = await trxRepo.save(payload as any);
 
       // Update balance depending on transaction type
       if (t === 'income') {
@@ -121,50 +125,44 @@ export class TransactionService {
   }
 
   async findAll(): Promise<TransactionResponseDto[]> {
-    const transactions = await this.transactionRepository
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.subcategory', 'subcategory')
-      .leftJoin('subcategory.category', 'category')
-      .addSelect('category.id', 'categoryId')
-      .getRawAndEntities();
-
-    return transactions.entities.map((transaction, index) => ({
+    const transactions = await this.transactionRepository.find();
+    return transactions.map((transaction) => ({
       ...transaction,
-      category_id: transactions.raw[index]?.categoryId || null
-    }));
+      id: transaction.id?.toString ? transaction.id.toString() : String(transaction.id),
+      subcategory_id: transaction.subcategory_id?.toString ? transaction.subcategory_id.toString() : null,
+      account_id: transaction.account_id?.toString ? transaction.account_id.toString() : String(transaction.account_id),
+      target_account_id: transaction.target_account_id?.toString ? transaction.target_account_id.toString() : null,
+      category_id: null,
+    } as TransactionResponseDto));
   }
 
-  async findOne(id: number): Promise<TransactionResponseDto | null> {
-    const result = await this.transactionRepository
-      .createQueryBuilder('transaction')
-      .leftJoin('transaction.subcategory', 'subcategory')
-      .leftJoin('subcategory.category', 'category')
-      .addSelect('category.id', 'categoryId')
-      .where('transaction.id = :id', { id })
-      .getRawAndEntities();
-
-    if (result.entities.length > 0) {
-      const transaction = result.entities[0];
-      return {
-        ...transaction,
-        category_id: result.raw[0]?.categoryId || null
-      };
+  async findOne(id: ObjectId): Promise<TransactionResponseDto | null> {
+    const transaction = await this.transactionRepository.findOne({ where: { id } });
+    if (!transaction) {
+      return null;
     }
 
-    return null;
+    return {
+      ...transaction,
+      id: transaction.id?.toString ? transaction.id.toString() : String(transaction.id),
+      subcategory_id: transaction.subcategory_id?.toString ? transaction.subcategory_id.toString() : null,
+      account_id: transaction.account_id?.toString ? transaction.account_id.toString() : String(transaction.account_id),
+      target_account_id: transaction.target_account_id?.toString ? transaction.target_account_id.toString() : null,
+      category_id: null,
+    } as TransactionResponseDto;
   }
 
-  update(id: number, updateTransactionDto: UpdateTransactionDto, userId?: number) {
+  update(id: ObjectId, updateTransactionDto: UpdateTransactionDto, userId?: number) {
     const payload = { ...(updateTransactionDto as any) };
     if (userId) payload.updated_by = userId;
     return this.transactionRepository.update(id, payload);
   }
 
-  remove(id: number) {
+  remove(id: ObjectId) {
     return this.transactionRepository.delete(id);
   }
 
-  async payment(id: number, paymentDto: PaymentTransactionDto, userId?: number) {
+  async payment(id: ObjectId, paymentDto: PaymentTransactionDto, userId?: number) {
     const transaction = await this.findOne(id);
     if (!transaction) {
       throw new Error('Transaction not found');

@@ -4,6 +4,7 @@ import { UpdateSubcategoryDto } from './dto/update-subcategory.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Subcategory } from './entities/subcategory.entity';
 import { Repository } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 @Injectable()
 export class SubcategoryService {
@@ -19,15 +20,15 @@ export class SubcategoryService {
     return this.subcategoryRepository.find();
   }
 
-  findOne(id: number) {
+  findOne(id: ObjectId) {
     return this.subcategoryRepository.findOne({ where: { id } });
   }
 
-  update(id: number, updateSubcategoryDto: UpdateSubcategoryDto) {
+  update(id: ObjectId, updateSubcategoryDto: UpdateSubcategoryDto) {
     return this.subcategoryRepository.update(id, updateSubcategoryDto);
   }
 
-  remove(id: number) {
+  remove(id: ObjectId) {
     return this.subcategoryRepository.delete(id);
   }
 }

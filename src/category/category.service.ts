@@ -4,6 +4,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
+import { ObjectId } from 'mongodb';
 
 @Injectable()
 export class CategoryService {
@@ -19,15 +20,15 @@ export class CategoryService {
     return this.categoryRepository.find();
   }
 
-  findOne(id: number) {
+  findOne(id: ObjectId) {
     return this.categoryRepository.findOne({ where: { id } });
   }
 
-  update(id: number, updateCategoryDto: UpdateCategoryDto) {
+  update(id: ObjectId, updateCategoryDto: UpdateCategoryDto) {
     return this.categoryRepository.update(id, updateCategoryDto);
   }
 
-  remove(id: number) {
+  remove(id: ObjectId) {
     return this.categoryRepository
       .findOne({ where: { id } })
       .then((result) => this.categoryRepository.remove(result))

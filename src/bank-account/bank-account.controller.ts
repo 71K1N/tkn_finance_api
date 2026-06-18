@@ -8,6 +8,8 @@ import {
   Delete,
   UseGuards,
 } from '@nestjs/common';
+import { ObjectId } from 'mongodb';
+import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { BankAccountService } from './bank-account.service';
 import { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
@@ -34,34 +36,34 @@ export class BankAccountController {
   }
 
   @Get(':id/balance')
-  getBalance(@Param('id') id: string) {
-    return this.bankAccountService.getBalance(+id);
+  getBalance(@Param('id', MongoIdPipe) id: ObjectId) {
+    return this.bankAccountService.getBalance(id);
   }
 
   @Get(':id/transactions')
-  getTransactions(@Param('id') id: string) {
-    return this.bankAccountService.getTransactions(+id);
+  getTransactions(@Param('id', MongoIdPipe) id: ObjectId) {
+    return this.bankAccountService.getTransactions(id);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.bankAccountService.findOne(+id);
+  findOne(@Param('id', MongoIdPipe) id: ObjectId) {
+    return this.bankAccountService.findOne(id);
   }
 
   @Patch(':id')
   update(
     @User() user: any,
-    @Param('id') id: string,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body() updateBankAccountDto: UpdateBankAccountDto,
   ) {
     if (user && user.id) {
       (updateBankAccountDto as any).updated_by = user.id;
     }
-    return this.bankAccountService.update(+id, updateBankAccountDto);
+    return this.bankAccountService.update(id, updateBankAccountDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.bankAccountService.remove(+id);
+  remove(@Param('id', MongoIdPipe) id: ObjectId) {
+    return this.bankAccountService.remove(id);
   }
 }

@@ -1,10 +1,9 @@
-import { IsString, IsNumber, IsPositive, IsOptional, Matches, IsEnum } from 'class-validator';
+import { IsMongoId, IsString, IsNumber, IsPositive, IsOptional, Matches, IsEnum } from 'class-validator';
 import { RolloverPolicy } from '../entities/budget.entity';
 
 export class CreateBudgetDto {
-  @IsNumber()
-  @IsPositive()
-  categoryId: number;
+  @IsMongoId()
+  categoryId: string;
 
   @IsString()
   @Matches(/^\d{4}-\d{2}$/, {

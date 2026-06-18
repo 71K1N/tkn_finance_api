@@ -1,9 +1,16 @@
 export class CategoryResponseDto {
-  id: number;
+  id: string;
   name: string;
   description: string;
   created_at: Date;
   updated_at: Date;
   created_by: number | null;
   updated_by: number | null;
+
+  constructor(partial: any) {
+    Object.assign(this, partial);
+    if (partial?.id?.toString) {
+      this.id = partial.id.toString();
+    }
+  }
 }

@@ -1,10 +1,11 @@
 import {
   Column,
   Entity,
-  PrimaryGeneratedColumn,
+  ObjectIdColumn,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 export enum WebhookEventType {
   BUDGET_THRESHOLD_WARNING = 'budget.threshold_warning',
@@ -15,23 +16,19 @@ export enum WebhookEventType {
 
 @Entity()
 export class WebhookSubscription {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column('int')
+  @Column()
   userId: number;
 
-  @Column({
-    type: 'varchar',
-    length: 100,
-    enum: WebhookEventType,
-  })
+  @Column()
   eventType: WebhookEventType;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column()
   endpoint: string;
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ default: true })
   isActive: boolean;
 
   @CreateDateColumn()
@@ -40,9 +37,9 @@ export class WebhookSubscription {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @Column('int')
+  @Column()
   created_by: number;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   updated_by: number;
 }

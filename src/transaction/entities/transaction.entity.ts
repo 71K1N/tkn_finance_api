@@ -1,58 +1,53 @@
-import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { Subcategory } from 'src/subcategory/entities/subcategory.entity';
-import { CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, ObjectIdColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 @Entity()
 export class Transaction {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column({ length: 255 })
+  @Column()
   name: string | null;
 
-  @Column({ length: 255 })
+  @Column()
   description: string | null;
 
-  @Column('float')
+  @Column()
   amount: number;
 
-  @Column('date')
+  @Column({ nullable: true })
   due_date: Date | null;
 
-  @Column('date',{nullable:true})
-  payment_date: Date;
+  @Column({ nullable: true })
+  payment_date: Date | null;
 
-  @Column('int', { nullable: true })
-  subcategory_id: number | null;
+  @Column({ nullable: true })
+  subcategory_id: ObjectId | null;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   user_id: number | null;
 
-  @Column('int')
-  account_id: number;
+  @Column()
+  account_id: ObjectId;
 
-  @Column('int', { nullable: true })
-  target_account_id: number | null;
+  @Column({ nullable: true })
+  target_account_id: ObjectId | null;
 
-  @Column('float', { nullable: true, default: 0 })
+  @Column({ nullable: true, default: 0 })
   paid_amount: number | null;
 
-  @Column({length: 255})
+  @Column()
   type: string;
 
-  @ManyToOne(() => Subcategory)
-  @JoinColumn({ name: 'subcategory_id' })
-  subcategory: Subcategory;
-
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   created_at: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updated_at: Date;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   created_by: number | null;
 
-  @Column('int', { nullable: true })
+  @Column({ nullable: true })
   updated_by: number | null;
 }

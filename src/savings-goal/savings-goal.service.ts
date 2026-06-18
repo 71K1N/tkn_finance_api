@@ -5,6 +5,7 @@ import { SavingsGoal } from './entities/savings-goal.entity';
 import { WishItem } from '../wish-item/entities/wish-item.entity';
 import { CreateSavingsGoalDto } from './dto/create-savings-goal.dto';
 import { UpdateSavingsGoalDto } from './dto/update-savings-goal.dto';
+import { ObjectId } from 'mongodb';
 
 @Injectable()
 export class SavingsGoalService {
@@ -34,7 +35,7 @@ export class SavingsGoalService {
     });
   }
 
-  async findOne(id: number, userId: number): Promise<SavingsGoal | null> {
+  async findOne(id: ObjectId, userId: number): Promise<SavingsGoal | null> {
     const goal = await this.savingsGoalRepository.findOne({ where: { id } });
     if (goal && goal.userId === userId) {
       return goal;
@@ -42,7 +43,7 @@ export class SavingsGoalService {
     return null;
   }
 
-  async update(id: number, userId: number, updateSavingsGoalDto: UpdateSavingsGoalDto): Promise<SavingsGoal> {
+  async update(id: ObjectId, userId: number, updateSavingsGoalDto: UpdateSavingsGoalDto): Promise<SavingsGoal> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');
@@ -61,7 +62,7 @@ export class SavingsGoalService {
     return this.savingsGoalRepository.save(goal);
   }
 
-  async deposit(id: number, userId: number, amount: number): Promise<SavingsGoal> {
+  async deposit(id: ObjectId, userId: number, amount: number): Promise<SavingsGoal> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');
@@ -82,7 +83,7 @@ export class SavingsGoalService {
     return this.savingsGoalRepository.save(goal);
   }
 
-  async withdraw(id: number, userId: number, amount: number): Promise<SavingsGoal> {
+  async withdraw(id: ObjectId, userId: number, amount: number): Promise<SavingsGoal> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');
@@ -101,7 +102,7 @@ export class SavingsGoalService {
     return this.savingsGoalRepository.save(goal);
   }
 
-  async getWishItems(id: number, userId: number): Promise<WishItem[]> {
+  async getWishItems(id: ObjectId, userId: number): Promise<WishItem[]> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');
@@ -109,7 +110,7 @@ export class SavingsGoalService {
     return this.wishItemRepository.find({ where: { linkedGoalId: id }, order: { targetDate: 'ASC' } });
   }
 
-  async getProgress(id: number, userId: number): Promise<{
+  async getProgress(id: ObjectId, userId: number): Promise<{
     targetAmount: number;
     currentSaved: number;
     remaining: number;
@@ -133,7 +134,7 @@ export class SavingsGoalService {
     };
   }
 
-  async delete(id: number, userId: number): Promise<void> {
+  async delete(id: ObjectId, userId: number): Promise<void> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');

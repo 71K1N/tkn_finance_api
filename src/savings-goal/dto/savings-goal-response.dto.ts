@@ -8,7 +8,7 @@ export class SavingsGoalProgressDto {
 }
 
 export class SavingsGoalResponseDto {
-  id: number;
+  id: string;
   userId: number;
   targetAmount: number;
   currentSaved: number;
@@ -19,7 +19,10 @@ export class SavingsGoalResponseDto {
   created_by: number;
   updated_by?: number;
 
-  constructor(partial: Partial<SavingsGoalResponseDto>) {
+  constructor(partial: any) {
     Object.assign(this, partial);
+    if (partial?.id?.toString) {
+      this.id = partial.id.toString();
+    }
   }
 }

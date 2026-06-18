@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsOptional } from 'class-validator';
+import { IsString, IsInt, IsOptional, IsMongoId } from 'class-validator';
 
 export class CreateSubcategoryDto {
   @IsString()
@@ -8,14 +8,14 @@ export class CreateSubcategoryDto {
   @IsString()
   description: string;
 
-  @IsInt()
-  categoryId: number;
+  @IsMongoId()
+  categoryId: string;
 
   @IsOptional()
-  @IsInt()
+  @IsString()
   created_by?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsString()
   updated_by?: number;
 }

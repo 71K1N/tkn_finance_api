@@ -1,6 +1,8 @@
+import { Type } from 'class-transformer';
 import { IsDate, IsNumber, IsOptional } from 'class-validator';
 
 export class PaymentTransactionDto {
+  @Type(() => Date)
   @IsDate()
   @IsOptional()
   payment_date?: Date;

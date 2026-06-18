@@ -24,10 +24,11 @@ import { WebhookSubscription } from './webhook/entities/webhook-subscription.ent
   imports: [
     CategoryModule,
     TypeOrmModule.forRoot({
-      database: './src/database/tknfinance.sqlite',
-      type: 'sqlite',
+      type: 'mongodb',
+      url: process.env.MONGODB_URI,
       entities: [Category, Subcategory, Transaction, BankAccount, Budget, BudgetAlert, WishItem, SavingsGoal, WebhookSubscription],
       synchronize: true,
+      logging: true,
     }),
     SubcategoryModule,
     BankAccountModule,
