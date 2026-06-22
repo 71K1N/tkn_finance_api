@@ -21,16 +21,21 @@ export class CategoryService {
   }
 
   findOne(id: ObjectId) {
-    return this.categoryRepository.findOne({ where: { id } });
+    return this.categoryRepository.findOne({ where: { _id: id } as any });
   }
 
-  update(id: ObjectId, updateCategoryDto: UpdateCategoryDto) {
-    return this.categoryRepository.update(id, updateCategoryDto);
+  async update(id: ObjectId, updateCategoryDto: UpdateCategoryDto) {
+    const category = await this.categoryRepository.findOne({ where: { _id: id } as any });
+    if (!category) {
+      throw new Error('Category not found');
+    }
+    Object.assign(category, updateCategoryDto);
+    return this.categoryRepository.save(category);
   }
 
   remove(id: ObjectId) {
     return this.categoryRepository
-      .findOne({ where: { id } })
+      .findOne({ where: { _id: id } as any })
       .then((result) => this.categoryRepository.remove(result))
       .catch(() => {
         return 'Não pode ser excluido ... pq eu nao sei mesmo...';

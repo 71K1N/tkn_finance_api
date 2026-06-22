@@ -69,7 +69,7 @@ export class BudgetService {
    */
   async findOne(id: ObjectId, userId: number): Promise<Budget | null> {
     const budget = await this.budgetRepository.findOne({
-      where: { id },
+      where: { _id: id } as any,
     });
 
     if (budget && budget.userId === userId) {
@@ -122,7 +122,7 @@ export class BudgetService {
    * Calculate spent amount for a budget based on expenses in that category/month
    */
   async calculateSpent(budgetId: ObjectId): Promise<number> {
-    const budget = await this.budgetRepository.findOne({ where: { id: budgetId } });
+    const budget = await this.budgetRepository.findOne({ where: { _id: budgetId } as any });
     if (!budget) {
       return 0;
     }
@@ -150,7 +150,7 @@ export class BudgetService {
    */
   async updateSpent(budgetId: ObjectId): Promise<Budget> {
     const spent = await this.calculateSpent(budgetId);
-    const budget = await this.budgetRepository.findOne({ where: { id: budgetId } });
+    const budget = await this.budgetRepository.findOne({ where: { _id: budgetId } as any });
 
     if (!budget) {
       throw new Error('Budget not found');
@@ -165,7 +165,7 @@ export class BudgetService {
    * Returns newly created alerts
    */
   async checkThresholds(budgetId: ObjectId): Promise<BudgetAlert[]> {
-    const budget = await this.budgetRepository.findOne({ where: { id: budgetId } });
+    const budget = await this.budgetRepository.findOne({ where: { _id: budgetId } as any });
     if (!budget) {
       return [];
     }
@@ -275,7 +275,7 @@ export class BudgetService {
    * Acknowledge an alert
    */
   async acknowledgeAlert(alertId: ObjectId): Promise<BudgetAlert> {
-    const alert = await this.budgetAlertRepository.findOne({ where: { id: alertId } });
+    const alert = await this.budgetAlertRepository.findOne({ where: { _id: alertId } as any });
     if (!alert) {
       throw new Error('Alert not found');
     }

@@ -24,11 +24,16 @@ export class BankAccountService {
   }
 
   findOne(id: ObjectId) {
-    return this.bankAccountRepository.find({ where: { id } });
+    return this.bankAccountRepository.find({ where: { _id: id } as any });
   }
 
-  update(id: ObjectId, updateBankAccountDto: UpdateBankAccountDto) {
-    return this.bankAccountRepository.update(id, updateBankAccountDto);
+  async update(id: ObjectId, updateBankAccountDto: UpdateBankAccountDto) {
+    const account = await this.bankAccountRepository.findOne({ where: { _id: id } as any });
+    if (!account) {
+      throw new NotFoundException('Account not found');
+    }
+    Object.assign(account, updateBankAccountDto);
+    return this.bankAccountRepository.save(account);
   }
 
   remove(id: ObjectId) {
@@ -36,7 +41,7 @@ export class BankAccountService {
   }
 
   async getBalance(id: ObjectId) {
-    const account = await this.bankAccountRepository.findOne({ where: { id } });
+    const account = await this.bankAccountRepository.findOne({ where: { _id: id } as any });
     if (!account) {
       throw new NotFoundException('Account not found');
     }

@@ -21,11 +21,16 @@ export class SubcategoryService {
   }
 
   findOne(id: ObjectId) {
-    return this.subcategoryRepository.findOne({ where: { id } });
+    return this.subcategoryRepository.findOne({ where: { _id: id } as any });
   }
 
-  update(id: ObjectId, updateSubcategoryDto: UpdateSubcategoryDto) {
-    return this.subcategoryRepository.update(id, updateSubcategoryDto);
+  async update(id: ObjectId, updateSubcategoryDto: UpdateSubcategoryDto) {
+    const subcategory = await this.subcategoryRepository.findOne({ where: { _id: id } as any });
+    if (!subcategory) {
+      throw new Error('Subcategory not found');
+    }
+    Object.assign(subcategory, updateSubcategoryDto);
+    return this.subcategoryRepository.save(subcategory);
   }
 
   remove(id: ObjectId) {

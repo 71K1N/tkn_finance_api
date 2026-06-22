@@ -36,7 +36,7 @@ export class SavingsGoalService {
   }
 
   async findOne(id: ObjectId, userId: number): Promise<SavingsGoal | null> {
-    const goal = await this.savingsGoalRepository.findOne({ where: { id } });
+    const goal = await this.savingsGoalRepository.findOne({ where: { _id: id } as any });
     if (goal && goal.userId === userId) {
       return goal;
     }

@@ -50,7 +50,7 @@ export class WishItemService {
 
   async findOne(id: ObjectId, userId: number): Promise<WishItem | null> {
     const wishItem = await this.wishItemRepository.findOne({
-      where: { id },
+      where: { _id: id } as any,
     });
     if (wishItem && wishItem.userId === userId) {
       return wishItem;
