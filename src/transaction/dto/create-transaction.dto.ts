@@ -1,4 +1,5 @@
 import { IsString, IsOptional, IsNumber, IsPositive, IsMongoId, IsDateString } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateTransactionDto {
   @IsOptional()
@@ -21,6 +22,7 @@ export class CreateTransactionDto {
   @IsDateString()
   payment_date?: Date;
 
+  @Transform(({ value }) => value === '' ? undefined : value)
   @IsOptional()
   @IsMongoId()
   subcategory_id?: string;
