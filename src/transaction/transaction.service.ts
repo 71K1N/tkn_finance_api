@@ -56,9 +56,9 @@ export class TransactionService {
         throw new HttpException('Target account not found', HttpStatus.NOT_FOUND);
       }
 
-      if (Number(account.balance) < amount) {
-        throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
-      }
+      // if (Number(account.balance) < amount) {
+      //   throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
+      // }
 
       const sourceTx = await this.transactionRepository.save({
         ...createTransactionDto,
@@ -96,16 +96,16 @@ export class TransactionService {
 
     const saved = await this.transactionRepository.save(payload as any);
 
-    if (t === 'income') {
-      account.balance = Number(account.balance) + amount;
-    } else if (t === 'expense') {
-      account.balance = Number(account.balance) - amount;
-      if (account.balance < 0) {
-        throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
-      }
-    }
+    // if (t === 'income') {
+    //   account.balance = Number(account.balance) + amount;
+    // } else if (t === 'expense') {
+    //   account.balance = Number(account.balance) - amount;
+    //   if (account.balance < 0) {
+    //     throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
+    //   }
+    // }
 
-    await this.bankAccountRepository.save(account);
+    // await this.bankAccountRepository.save(account);
 
     return saved as TransactionResponseDto;
   }

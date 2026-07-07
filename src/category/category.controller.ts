@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ObjectId } from 'mongodb';
@@ -15,6 +16,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @UseGuards(AuthGuard)
 @Controller('category')
@@ -31,8 +33,8 @@ export class CategoryController {
   }
 
   @Get()
-  findAll() {
-    return this.categoryService.findAll();
+  findAll(@Query() query: FindAllQueryDto) {
+    return this.categoryService.findAll(query);
   }
 
   @Get(':id')
