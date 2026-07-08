@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ObjectId } from 'mongodb';
@@ -15,6 +16,7 @@ import { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @UseGuards(AuthGuard)
 @Controller('bank-account')
@@ -22,7 +24,10 @@ export class BankAccountController {
   constructor(private readonly bankAccountService: BankAccountService) {}
 
   @Post()
-  create(@User() user: any, @Body() createBankAccountDto: CreateBankAccountDto) {
+  create(
+    @User() user: any,
+    @Body() createBankAccountDto: CreateBankAccountDto,
+  ) {
     if (user && user.id) {
       (createBankAccountDto as any).created_by = user.id;
       (createBankAccountDto as any).updated_by = user.id;
@@ -31,8 +36,8 @@ export class BankAccountController {
   }
 
   @Get()
-  findAll() {
-    return this.bankAccountService.findAll();
+  findAll(@Query() query: FindAllQueryDto) {
+    return this.bankAccountService.findAll(query);
   }
 
   @Get(':id/balance')

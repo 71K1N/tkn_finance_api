@@ -1,49 +1,72 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MongoRepository } from 'typeorm';
 import { SavingsGoal } from './entities/savings-goal.entity';
 import { WishItem } from '../wish-item/entities/wish-item.entity';
 import { CreateSavingsGoalDto } from './dto/create-savings-goal.dto';
 import { UpdateSavingsGoalDto } from './dto/update-savings-goal.dto';
 import { ObjectId } from 'mongodb';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
+import { paginate } from '../common/pagination/paginate.util';
 
 @Injectable()
 export class SavingsGoalService {
   constructor(
     @InjectRepository(SavingsGoal)
-    private savingsGoalRepository: Repository<SavingsGoal>,
+    private savingsGoalRepository: MongoRepository<SavingsGoal>,
     @InjectRepository(WishItem)
-    private wishItemRepository: Repository<WishItem>,
+    private wishItemRepository: MongoRepository<WishItem>,
   ) {}
 
-  async create(userId: number, createSavingsGoalDto: CreateSavingsGoalDto): Promise<SavingsGoal> {
+  async create(
+    userId: number,
+    createSavingsGoalDto: CreateSavingsGoalDto,
+  ): Promise<SavingsGoal> {
     const goal = this.savingsGoalRepository.create({
       userId,
       targetAmount: createSavingsGoalDto.targetAmount,
       currentSaved: 0,
       monthlyAllocation: createSavingsGoalDto.monthlyAllocation,
-      projectedCompletionDate: this.calculateProjectedCompletion(0, createSavingsGoalDto.targetAmount, createSavingsGoalDto.monthlyAllocation),
+      projectedCompletionDate: this.calculateProjectedCompletion(
+        0,
+        createSavingsGoalDto.targetAmount,
+        createSavingsGoalDto.monthlyAllocation,
+      ),
       created_by: userId,
     });
     return this.savingsGoalRepository.save(goal);
   }
 
-  async findAll(userId: number): Promise<SavingsGoal[]> {
-    return this.savingsGoalRepository.find({
-      where: { userId },
-      order: { created_at: 'DESC' },
+  findAll(userId: number, query: FindAllQueryDto) {
+    return paginate(this.savingsGoalRepository, query, {
+      sortableFields: [
+        'targetAmount',
+        'currentSaved',
+        'monthlyAllocation',
+        'projectedCompletionDate',
+        'created_at',
+        'updated_at',
+      ],
+      defaultSort: { key: 'created_at', direction: 'desc' },
+      baseWhere: { userId },
     });
   }
 
   async findOne(id: ObjectId, userId: number): Promise<SavingsGoal | null> {
-    const goal = await this.savingsGoalRepository.findOne({ where: { _id: id } as any });
+    const goal = await this.savingsGoalRepository.findOne({
+      where: { _id: id } as any,
+    });
     if (goal && goal.userId === userId) {
       return goal;
     }
     return null;
   }
 
-  async update(id: ObjectId, userId: number, updateSavingsGoalDto: UpdateSavingsGoalDto): Promise<SavingsGoal> {
+  async update(
+    id: ObjectId,
+    userId: number,
+    updateSavingsGoalDto: UpdateSavingsGoalDto,
+  ): Promise<SavingsGoal> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');
@@ -56,13 +79,21 @@ export class SavingsGoalService {
       goal.monthlyAllocation = updateSavingsGoalDto.monthlyAllocation;
     }
 
-    goal.projectedCompletionDate = this.calculateProjectedCompletion(goal.currentSaved, goal.targetAmount, goal.monthlyAllocation);
+    goal.projectedCompletionDate = this.calculateProjectedCompletion(
+      goal.currentSaved,
+      goal.targetAmount,
+      goal.monthlyAllocation,
+    );
     goal.updated_by = userId;
     goal.updated_at = new Date();
     return this.savingsGoalRepository.save(goal);
   }
 
-  async deposit(id: ObjectId, userId: number, amount: number): Promise<SavingsGoal> {
+  async deposit(
+    id: ObjectId,
+    userId: number,
+    amount: number,
+  ): Promise<SavingsGoal> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');
@@ -77,13 +108,21 @@ export class SavingsGoalService {
       goal.currentSaved += amount;
     }
 
-    goal.projectedCompletionDate = this.calculateProjectedCompletion(goal.currentSaved, goal.targetAmount, goal.monthlyAllocation);
+    goal.projectedCompletionDate = this.calculateProjectedCompletion(
+      goal.currentSaved,
+      goal.targetAmount,
+      goal.monthlyAllocation,
+    );
     goal.updated_by = userId;
     goal.updated_at = new Date();
     return this.savingsGoalRepository.save(goal);
   }
 
-  async withdraw(id: ObjectId, userId: number, amount: number): Promise<SavingsGoal> {
+  async withdraw(
+    id: ObjectId,
+    userId: number,
+    amount: number,
+  ): Promise<SavingsGoal> {
     const goal = await this.findOne(id, userId);
     if (!goal) {
       throw new Error('Savings goal not found');
@@ -96,7 +135,11 @@ export class SavingsGoalService {
     }
 
     goal.currentSaved -= amount;
-    goal.projectedCompletionDate = this.calculateProjectedCompletion(goal.currentSaved, goal.targetAmount, goal.monthlyAllocation);
+    goal.projectedCompletionDate = this.calculateProjectedCompletion(
+      goal.currentSaved,
+      goal.targetAmount,
+      goal.monthlyAllocation,
+    );
     goal.updated_by = userId;
     goal.updated_at = new Date();
     return this.savingsGoalRepository.save(goal);
@@ -107,10 +150,16 @@ export class SavingsGoalService {
     if (!goal) {
       throw new Error('Savings goal not found');
     }
-    return this.wishItemRepository.find({ where: { linkedGoalId: id }, order: { targetDate: 'ASC' } });
+    return this.wishItemRepository.find({
+      where: { linkedGoalId: id },
+      order: { targetDate: 'ASC' },
+    });
   }
 
-  async getProgress(id: ObjectId, userId: number): Promise<{
+  async getProgress(
+    id: ObjectId,
+    userId: number,
+  ): Promise<{
     targetAmount: number;
     currentSaved: number;
     remaining: number;
@@ -139,11 +188,18 @@ export class SavingsGoalService {
     if (!goal) {
       throw new Error('Savings goal not found');
     }
-    await this.wishItemRepository.update({ linkedGoalId: id }, { linkedGoalId: null });
+    await this.wishItemRepository.update(
+      { linkedGoalId: id },
+      { linkedGoalId: null },
+    );
     await this.savingsGoalRepository.delete(id);
   }
 
-  private calculateProjectedCompletion(currentSaved: number, targetAmount: number, monthlyAllocation: number): Date | null {
+  private calculateProjectedCompletion(
+    currentSaved: number,
+    targetAmount: number,
+    monthlyAllocation: number,
+  ): Date | null {
     if (currentSaved >= targetAmount) {
       return new Date();
     }

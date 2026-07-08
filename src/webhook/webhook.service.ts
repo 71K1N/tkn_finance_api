@@ -87,7 +87,10 @@ export class WebhookService {
     }
   }
 
-  private async emitToEndpoint(endpoint: string, payload: WebhookPayload): Promise<void> {
+  private async emitToEndpoint(
+    endpoint: string,
+    payload: WebhookPayload,
+  ): Promise<void> {
     try {
       await this.httpService
         .post(endpoint, payload, {

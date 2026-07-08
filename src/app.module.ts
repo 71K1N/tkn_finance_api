@@ -10,6 +10,7 @@ import { BudgetModule } from './budget/budget.module';
 import { WishItemModule } from './wish-item/wish-item.module';
 import { SavingsGoalModule } from './savings-goal/savings-goal.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { ExpenseGroupModule } from './expense-group/expense-group.module';
 import { Category } from './category/entities/category.entity';
 import { Subcategory } from './subcategory/entities/subcategory.entity';
 import { Transaction } from './transaction/entities/transaction.entity';
@@ -19,6 +20,10 @@ import { BudgetAlert } from './budget/entities/budget-alert.entity';
 import { WishItem } from './wish-item/entities/wish-item.entity';
 import { SavingsGoal } from './savings-goal/entities/savings-goal.entity';
 import { WebhookSubscription } from './webhook/entities/webhook-subscription.entity';
+import { ExpenseGroup } from './expense-group/entities/expense-group.entity';
+import { GroupExpense } from './expense-group/entities/group-expense.entity';
+import { ExpenseSplit } from './expense-group/entities/expense-split.entity';
+import { ExpenseSettlement } from './expense-group/entities/expense-settlement.entity';
 
 @Module({
   imports: [
@@ -26,7 +31,21 @@ import { WebhookSubscription } from './webhook/entities/webhook-subscription.ent
     TypeOrmModule.forRoot({
       type: 'mongodb',
       url: process.env.MONGODB_URI,
-      entities: [Category, Subcategory, Transaction, BankAccount, Budget, BudgetAlert, WishItem, SavingsGoal, WebhookSubscription],
+      entities: [
+        Category,
+        Subcategory,
+        Transaction,
+        BankAccount,
+        Budget,
+        BudgetAlert,
+        WishItem,
+        SavingsGoal,
+        WebhookSubscription,
+        ExpenseGroup,
+        GroupExpense,
+        ExpenseSplit,
+        ExpenseSettlement,
+      ],
       synchronize: true,
       logging: true,
     }),
@@ -37,6 +56,7 @@ import { WebhookSubscription } from './webhook/entities/webhook-subscription.ent
     WishItemModule,
     SavingsGoalModule,
     WebhookModule,
+    ExpenseGroupModule,
   ],
   controllers: [AppController],
   providers: [AppService],

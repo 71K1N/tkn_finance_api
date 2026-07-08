@@ -10,11 +10,14 @@ describe('Budget Management E2E Tests (P2)', () => {
   const authToken = `Bearer ${userId}`;
 
   // Test data
-  let categoryId = 1;
-  let subcategoryId = 1;
-  let budgetId: number;
-  let accountId = 1;
+  const categoryId = '507f1f77bcf86cd799439011';
+  let subcategoryId: string;
+  let budgetId: string;
+  let accountId: string;
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+  // Resources created during the run, deleted in afterAll so the shared DB stays clean
+  const createdTransactionIds: string[] = [];
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -31,9 +34,45 @@ describe('Budget Management E2E Tests (P2)', () => {
     );
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
+
+    const account = await request(app.getHttpServer())
+      .post('/bank-account')
+      .set('Authorization', authToken)
+      .send({ description: 'Budget E2E Test Account', balance: 0 });
+    accountId = account.body.id;
+
+    const subcategory = await request(app.getHttpServer())
+      .post('/subcategory')
+      .set('Authorization', authToken)
+      .send({
+        name: 'Budget E2E Test Subcategory',
+        description: 'test',
+        categoryId,
+      });
+    subcategoryId = subcategory.body.id;
   });
 
   afterAll(async () => {
+    for (const id of createdTransactionIds) {
+      await request(app.getHttpServer())
+        .delete(`/transaction/${id}`)
+        .set('Authorization', authToken);
+    }
+    if (budgetId) {
+      await request(app.getHttpServer())
+        .delete(`/budget/${budgetId}`)
+        .set('Authorization', authToken);
+    }
+    if (subcategoryId) {
+      await request(app.getHttpServer())
+        .delete(`/subcategory/${subcategoryId}`)
+        .set('Authorization', authToken);
+    }
+    if (accountId) {
+      await request(app.getHttpServer())
+        .delete(`/bank-account/${accountId}`)
+        .set('Authorization', authToken);
+    }
     await app.close();
   });
 
@@ -60,7 +99,7 @@ describe('Budget Management E2E Tests (P2)', () => {
 
     it('should retrieve budget by month', async () => {
       const response = await request(app.getHttpServer())
-        .get(`/budget?month=${currentMonth}`)
+        .get(`/budget/by-month?month=${currentMonth}`)
         .set('Authorization', authToken)
         .expect(200);
 
@@ -110,7 +149,7 @@ describe('Budget Management E2E Tests (P2)', () => {
   describe('Budget Threshold Alerts', () => {
     it('should NOT fire alert when spending is below 90%', async () => {
       // Budget is 150, create transaction for 50 (33%)
-      await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .post('/transaction')
         .set('Authorization', authToken)
         .send({
@@ -121,20 +160,23 @@ describe('Budget Management E2E Tests (P2)', () => {
           user_id: userId,
         })
         .expect(201);
+      createdTransactionIds.push(response.body.id);
 
       const budgetResponse = await request(app.getHttpServer())
         .get(`/budget/${budgetId}`)
         .set('Authorization', authToken)
         .expect(200);
 
-      expect(budgetResponse.body.spent).toBeLessThan(budgetResponse.body.amount * 0.9);
+      expect(budgetResponse.body.spent).toBeLessThan(
+        budgetResponse.body.amount * 0.9,
+      );
       expect(budgetResponse.body.alerts.length).toBe(0);
     });
 
     it('should fire WARNING alert at 90% threshold', async () => {
       // Budget is 150, need to reach 135 (90%)
       // Already have 50 spent, add 85 more to reach 135
-      await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .post('/transaction')
         .set('Authorization', authToken)
         .send({
@@ -145,13 +187,15 @@ describe('Budget Management E2E Tests (P2)', () => {
           user_id: userId,
         })
         .expect(201);
+      createdTransactionIds.push(response.body.id);
 
       const budgetResponse = await request(app.getHttpServer())
         .get(`/budget/${budgetId}`)
         .set('Authorization', authToken)
         .expect(200);
 
-      const percentUsed = (budgetResponse.body.spent / budgetResponse.body.amount) * 100;
+      const percentUsed =
+        (budgetResponse.body.spent / budgetResponse.body.amount) * 100;
       expect(percentUsed).toBeGreaterThanOrEqual(90);
 
       const warningAlert = budgetResponse.body.alerts.find(
@@ -180,7 +224,9 @@ describe('Budget Management E2E Tests (P2)', () => {
         .set('Authorization', authToken)
         .expect(200);
 
-      const updatedAlert = updatedBudget.body.alerts.find((a) => a.id === alert.id);
+      const updatedAlert = updatedBudget.body.alerts.find(
+        (a) => a.id === alert.id,
+      );
       expect(updatedAlert.acknowledged).toBe(true);
     });
   });
@@ -222,8 +268,8 @@ describe('Budget Management E2E Tests (P2)', () => {
   });
 
   describe('Multiple Budgets Same Month', () => {
-    let budgetId2: number;
-    let categoryId2 = 2;
+    let budgetId2: string;
+    const categoryId2 = '507f191e810c19729de860ea';
 
     it('should create second budget for different category', async () => {
       const response = await request(app.getHttpServer())
@@ -244,7 +290,7 @@ describe('Budget Management E2E Tests (P2)', () => {
 
     it('should list both budgets for month', async () => {
       const response = await request(app.getHttpServer())
-        .get(`/budget?month=${currentMonth}`)
+        .get(`/budget/by-month?month=${currentMonth}`)
         .set('Authorization', authToken)
         .expect(200);
 
@@ -261,7 +307,10 @@ describe('Budget Management E2E Tests (P2)', () => {
         .expect(200);
 
       expect(response.body.budgets.length).toBeGreaterThanOrEqual(2);
-      expect(response.body.totalBudget).toBe(350); // 150 + 200
+      const thisRunBudgetTotal = response.body.budgets
+        .filter((b) => b.id === budgetId || b.id === budgetId2)
+        .reduce((sum, b) => sum + b.amount, 0);
+      expect(thisRunBudgetTotal).toBe(350); // 150 + 200
     });
 
     it('should delete second budget', async () => {
@@ -280,7 +329,9 @@ describe('Budget Management E2E Tests (P2)', () => {
 
   describe('Authorization & Error Handling', () => {
     it('should reject request without authorization', async () => {
-      await request(app.getHttpServer()).get(`/budget?month=${currentMonth}`).expect(403);
+      await request(app.getHttpServer())
+        .get(`/budget/by-month?month=${currentMonth}`)
+        .expect(403);
     });
 
     it('should return 400 for invalid budget ID', async () => {
@@ -292,14 +343,14 @@ describe('Budget Management E2E Tests (P2)', () => {
 
     it('should return 404 for non-existent budget', async () => {
       await request(app.getHttpServer())
-        .get('/budget/99999')
+        .get('/budget/507f1f77bcf86cd799439099')
         .set('Authorization', authToken)
         .expect(404);
     });
 
     it('should return 400 for missing month query param', async () => {
       await request(app.getHttpServer())
-        .get('/budget')
+        .get('/budget/by-month')
         .set('Authorization', authToken)
         .expect(400);
     });

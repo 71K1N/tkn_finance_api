@@ -2,9 +2,9 @@ import { Column, Entity, ObjectIdColumn, CreateDateColumn } from 'typeorm';
 import { ObjectId } from 'mongodb';
 
 export enum AlertLevel {
-  WARNING = 'warning',      // 90% threshold
-  EXCEEDED = 'exceeded',     // 100% threshold
-  OVERAGE = 'overage',       // >100% threshold
+  WARNING = 'warning', // 90% threshold
+  EXCEEDED = 'exceeded', // 100% threshold
+  OVERAGE = 'overage', // >100% threshold
 }
 
 @Entity()

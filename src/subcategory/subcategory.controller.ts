@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ObjectId } from 'mongodb';
@@ -15,6 +16,7 @@ import { CreateSubcategoryDto } from './dto/create-subcategory.dto';
 import { UpdateSubcategoryDto } from './dto/update-subcategory.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @UseGuards(AuthGuard)
 @Controller('subcategory')
@@ -22,7 +24,10 @@ export class SubcategoryController {
   constructor(private readonly subcategoryService: SubcategoryService) {}
 
   @Post()
-  create(@User() user: any, @Body() createSubcategoryDto: CreateSubcategoryDto) {
+  create(
+    @User() user: any,
+    @Body() createSubcategoryDto: CreateSubcategoryDto,
+  ) {
     if (user && user.id) {
       (createSubcategoryDto as any).created_by = user.id;
       (createSubcategoryDto as any).updated_by = user.id;
@@ -31,8 +36,8 @@ export class SubcategoryController {
   }
 
   @Get()
-  findAll() {
-    return this.subcategoryService.findAll();
+  findAll(@Query() query: FindAllQueryDto) {
+    return this.subcategoryService.findAll(query);
   }
 
   @Get(':id')

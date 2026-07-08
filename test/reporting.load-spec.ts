@@ -64,7 +64,9 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
     subcategoryId = subcategoryResponse.body.id;
 
     // Create multiple budgets for multiple months
-    console.log('Setting up load test data: Creating 12 budgets (one per month)...');
+    console.log(
+      'Setting up load test data: Creating 12 budgets (one per month)...',
+    );
     for (let i = 1; i <= 12; i++) {
       const month = `2025-${String(i).padStart(2, '0')}`;
       await request(app.getHttpServer())
@@ -101,7 +103,9 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
         transactionCount++;
       }
     }
-    console.log(`Load test setup complete: ${transactionCount} transactions created`);
+    console.log(
+      `Load test setup complete: ${transactionCount} transactions created`,
+    );
   });
 
   afterAll(async () => {
@@ -121,7 +125,10 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
       ).toFixed(2) + 'ms',
     );
 
-    console.log('\nTrend Report Response Times:', performanceMetrics.trendReportTimes);
+    console.log(
+      '\nTrend Report Response Times:',
+      performanceMetrics.trendReportTimes,
+    );
     console.log(
       'Average Trend Report Time:',
       (
@@ -130,7 +137,10 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
       ).toFixed(2) + 'ms',
     );
 
-    console.log('\nList Budgets Response Times:', performanceMetrics.listBudgetsTimes);
+    console.log(
+      '\nList Budgets Response Times:',
+      performanceMetrics.listBudgetsTimes,
+    );
     console.log(
       'Average List Budgets Time:',
       (
@@ -189,7 +199,9 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
         const responseTime = endTime - startTime;
         performanceMetrics.monthlyReportTimes.push(responseTime);
 
-        console.log(`Monthly report (${month}) response time: ${responseTime}ms`);
+        console.log(
+          `Monthly report (${month}) response time: ${responseTime}ms`,
+        );
         expect(responseTime).toBeLessThan(500);
       }
     });
@@ -248,7 +260,8 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
       }
 
       const responseTimes = await Promise.all(promises);
-      const avgTime = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+      const avgTime =
+        responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
       console.log(`Average concurrent response time: ${avgTime.toFixed(2)}ms`);
 
       // Average should still be acceptable even with concurrency
@@ -348,7 +361,9 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
             const responseTime = endTime - startTime;
             localMetrics.push(responseTime);
             performanceMetrics.monthlyReportTimes.push(responseTime);
-            console.log(`Concurrent monthly report response time: ${responseTime}ms`);
+            console.log(
+              `Concurrent monthly report response time: ${responseTime}ms`,
+            );
             expect(response.status).toBe(200);
             return responseTime;
           });
@@ -357,7 +372,8 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
       }
 
       const responseTimes = await Promise.all(promises);
-      const avgTime = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+      const avgTime =
+        responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
       const maxTime = Math.max(...responseTimes);
 
       console.log(`Average concurrent response time: ${avgTime.toFixed(2)}ms`);
@@ -391,7 +407,8 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
 
       // First call might be slower due to warm-up, but subsequent calls should be consistent
       const avgFirstTwo = (responseTimes[0] + responseTimes[1]) / 2;
-      const avgLastTwo = (responseTimes[callCount - 2] + responseTimes[callCount - 1]) / 2;
+      const avgLastTwo =
+        (responseTimes[callCount - 2] + responseTimes[callCount - 1]) / 2;
 
       // Last calls should not be significantly slower than first calls
       expect(avgLastTwo).toBeLessThan(avgFirstTwo * 1.5);

@@ -15,10 +15,14 @@ import { ObjectId } from 'mongodb';
 import { BudgetService } from './budget.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
-import { BudgetResponseDto, BudgetAlertResponseDto } from './dto/budget-response.dto';
+import {
+  BudgetResponseDto,
+  BudgetAlertResponseDto,
+} from './dto/budget-response.dto';
 import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @Controller('budget')
 @UseGuards(AuthGuard)
@@ -39,16 +43,31 @@ export class BudgetController {
   }
 
   /**
-   * Get all budgets for a specific month
-   * GET /budget?month=2024-01
+   * Get all budgets for the authenticated user, paginated/searchable/sortable/filterable
+   * GET /budget
    */
   @Get()
+  async findAll(@User() userId: number, @Query() query: FindAllQueryDto) {
+    const result = await this.budgetService.findAll(userId, query);
+    return {
+      data: result.data.map((b) => new BudgetResponseDto(b)),
+      pagination: result.pagination,
+    };
+  }
+
+  /**
+   * Get all budgets for a specific month
+   * GET /budget/by-month?month=2024-01
+   */
+  @Get('by-month')
   async findByMonth(
     @User() userId: number,
     @Query('month') month: string,
   ): Promise<BudgetResponseDto[]> {
     if (!month || !month.match(/^\d{4}-\d{2}$/)) {
-      throw new BadRequestException('month query parameter required in YYYY-MM format');
+      throw new BadRequestException(
+        'month query parameter required in YYYY-MM format',
+      );
     }
 
     const budgets = await this.budgetService.findByMonth(userId, month);
@@ -93,7 +112,11 @@ export class BudgetController {
     @Body() updateBudgetDto: UpdateBudgetDto,
   ): Promise<BudgetResponseDto> {
     try {
-      const budget = await this.budgetService.update(id, userId, updateBudgetDto);
+      const budget = await this.budgetService.update(
+        id,
+        userId,
+        updateBudgetDto,
+      );
       return new BudgetResponseDto(budget);
     } catch (error) {
       throw new NotFoundException('Budget not found');
@@ -134,7 +157,9 @@ export class BudgetController {
     alerts: BudgetAlertResponseDto[];
   }> {
     if (!month || !month.match(/^\d{4}-\d{2}$/)) {
-      throw new BadRequestException('month query parameter required in YYYY-MM format');
+      throw new BadRequestException(
+        'month query parameter required in YYYY-MM format',
+      );
     }
 
     const report = await this.budgetService.getMonthlyReport(userId, month);
@@ -154,9 +179,7 @@ export class BudgetController {
    * GET /budget/report/trend
    */
   @Get('report/trend')
-  async getSpendingTrend(
-    @User() userId: number,
-  ): Promise<
+  async getSpendingTrend(@User() userId: number): Promise<
     Array<{
       month: string;
       totalBudget: number;

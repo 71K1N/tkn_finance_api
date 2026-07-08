@@ -3,7 +3,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Transaction } from './entities/transaction.entity';
-import { Repository } from 'typeorm';
+import { MongoRepository, Repository } from 'typeorm';
 import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
 import { BudgetService } from '../budget/budget.service';
@@ -11,12 +11,14 @@ import { BankAccount } from 'src/bank-account/entities/bank-account.entity';
 import { Subcategory } from 'src/subcategory/entities/subcategory.entity';
 import { ObjectId } from 'mongodb';
 import { toObjectId } from '../common/mongo.util';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
+import { paginate } from '../common/pagination/paginate.util';
 
 @Injectable()
 export class TransactionService {
   constructor(
     @InjectRepository(Transaction)
-    private transactionRepository: Repository<Transaction>,
+    private transactionRepository: MongoRepository<Transaction>,
     @InjectRepository(BankAccount)
     private bankAccountRepository: Repository<BankAccount>,
     @InjectRepository(Subcategory)
@@ -25,18 +27,25 @@ export class TransactionService {
   ) {}
 
   async create(createTransactionDto: CreateTransactionDto) {
-    const account = await this.bankAccountRepository.findOne({ where: { _id: toObjectId(createTransactionDto.account_id) } as any });
+    const account = await this.bankAccountRepository.findOne({
+      where: { _id: toObjectId(createTransactionDto.account_id) } as any,
+    });
     if (!account) {
       throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
     }
 
     const amount = Number(createTransactionDto.amount || 0);
     if (!(amount > 0)) {
-      throw new HttpException('Amount must be a positive number', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Amount must be a positive number',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     if (createTransactionDto.subcategory_id) {
-      const subcat = await this.subcategoryRepository.findOne({ where: { _id: toObjectId(createTransactionDto.subcategory_id) } as any });
+      const subcat = await this.subcategoryRepository.findOne({
+        where: { _id: toObjectId(createTransactionDto.subcategory_id) } as any,
+      });
       if (!subcat) {
         throw new HttpException('Subcategory not found', HttpStatus.NOT_FOUND);
       }
@@ -48,12 +57,20 @@ export class TransactionService {
     if (t === 'transfer') {
       const targetId = createTransactionDto.target_account_id;
       if (!targetId) {
-        throw new HttpException('Target account required for transfer', HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          'Target account required for transfer',
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
-      const targetAccount = await this.bankAccountRepository.findOne({ where: { _id: toObjectId(targetId) } as any });
+      const targetAccount = await this.bankAccountRepository.findOne({
+        where: { _id: toObjectId(targetId) } as any,
+      });
       if (!targetAccount) {
-        throw new HttpException('Target account not found', HttpStatus.NOT_FOUND);
+        throw new HttpException(
+          'Target account not found',
+          HttpStatus.NOT_FOUND,
+        );
       }
 
       // if (Number(account.balance) < amount) {
@@ -88,8 +105,12 @@ export class TransactionService {
     const payload = {
       ...(createTransactionDto as any),
       account_id: toObjectId(createTransactionDto.account_id),
-      subcategory_id: createTransactionDto.subcategory_id ? toObjectId(createTransactionDto.subcategory_id) : undefined,
-      target_account_id: createTransactionDto.target_account_id ? toObjectId(createTransactionDto.target_account_id) : undefined,
+      subcategory_id: createTransactionDto.subcategory_id
+        ? toObjectId(createTransactionDto.subcategory_id)
+        : undefined,
+      target_account_id: createTransactionDto.target_account_id
+        ? toObjectId(createTransactionDto.target_account_id)
+        : undefined,
       created_by: userId,
       updated_by: userId,
     } as any;
@@ -110,36 +131,60 @@ export class TransactionService {
     return saved as TransactionResponseDto;
   }
 
-  async findAll(): Promise<TransactionResponseDto[]> {
-    const transactions = await this.transactionRepository.find();
-    return transactions.map((transaction) => ({
-      ...transaction,
-      id: transaction.id?.toString ? transaction.id.toString() : String(transaction.id),
-      subcategory_id: transaction.subcategory_id?.toString ? transaction.subcategory_id.toString() : null,
-      account_id: transaction.account_id?.toString ? transaction.account_id.toString() : String(transaction.account_id),
-      target_account_id: transaction.target_account_id?.toString ? transaction.target_account_id.toString() : null,
-      category_id: null,
-    } as TransactionResponseDto));
+  findAll(userId: number, query: FindAllQueryDto) {
+    return paginate(this.transactionRepository, query, {
+      searchableFields: ['name', 'description'],
+      filterableFields: [
+        'name',
+        'description',
+        'type',
+        'account_id',
+        'subcategory_id',
+      ],
+      sortableFields: [
+        'name',
+        'amount',
+        'due_date',
+        'payment_date',
+        'type',
+        'created_at',
+        'updated_at',
+      ],
+      defaultSort: { key: 'created_at', direction: 'desc' },
+      baseWhere: { user_id: userId },
+    });
   }
 
-  async findOne(id: ObjectId): Promise<TransactionResponseDto | null> {
-    const transaction = await this.transactionRepository.findOne({ where: { _id: id } as any });
-    if (!transaction) {
-      return null;
-    }
+  findOne(id: ObjectId) {
+    return this.transactionRepository.findOne({ where: { _id: id } as any });
+  }
+
+  async getSummary(userId: number) {
+    const results = (await this.transactionRepository
+      .aggregate([
+        { $match: { user_id: userId } },
+        { $group: { _id: '$type', total: { $sum: '$amount' } } },
+      ])
+      .toArray()) as unknown as { _id: string; total: number }[];
+
+    const totalExpenses = results.find((r) => r._id === 'EXPENSE')?.total ?? 0;
+    const totalIncome = results.find((r) => r._id === 'INCOME')?.total ?? 0;
 
     return {
-      ...transaction,
-      id: transaction.id?.toString ? transaction.id.toString() : String(transaction.id),
-      subcategory_id: transaction.subcategory_id?.toString ? transaction.subcategory_id.toString() : null,
-      account_id: transaction.account_id?.toString ? transaction.account_id.toString() : String(transaction.account_id),
-      target_account_id: transaction.target_account_id?.toString ? transaction.target_account_id.toString() : null,
-      category_id: null,
-    } as TransactionResponseDto;
+      totalExpenses,
+      totalIncome,
+      balance: totalIncome - totalExpenses,
+    };
   }
 
-  async update(id: ObjectId, updateTransactionDto: UpdateTransactionDto, userId?: number) {
-    const transaction = await this.transactionRepository.findOne({ where: { _id: id } as any });
+  async update(
+    id: ObjectId,
+    updateTransactionDto: UpdateTransactionDto,
+    userId?: number,
+  ) {
+    const transaction = await this.transactionRepository.findOne({
+      where: { _id: id } as any,
+    });
     if (!transaction) {
       throw new Error('Transaction not found');
     }
@@ -149,13 +194,46 @@ export class TransactionService {
   }
 
   remove(id: ObjectId) {
-    return this.transactionRepository.delete(id);
+    return this.transactionRepository
+      .findOne({ where: { _id: id } as any })
+      .then((result) => this.transactionRepository.remove(result))
+      .catch(() => {
+        return 'Não pode ser excluido ... pq eu nao sei mesmo...';
+      });
   }
 
-  async payment(id: ObjectId, paymentDto: PaymentTransactionDto, userId?: number) {
-    const transaction = await this.transactionRepository.findOne({ where: { _id: id } as any });
+  async payment(
+    id: ObjectId,
+    paymentDto: PaymentTransactionDto,
+    userId?: number,
+  ) {
+    const transaction = await this.transactionRepository.findOne({
+      where: { _id: id } as any,
+    });
     if (!transaction) {
       throw new Error('Transaction not found');
+    }
+
+    // Balance only moves when a transaction is actually paid/received, not at creation
+    // (creation just registers a pending due amount). Guard against double-applying the
+    // balance change if this transaction was already paid before.
+    if (!transaction.payment_date) {
+      const accountId = ObjectId.createFromHexString(
+        transaction.account_id.toString(),
+      );
+      const account = await this.bankAccountRepository.findOne({
+        where: { _id: accountId } as any,
+      });
+      if (account) {
+        const amount = Number(paymentDto.paid_amount);
+        const type = (transaction.type || '').toLowerCase();
+        if (type === 'income') {
+          account.balance = Number(account.balance) + amount;
+        } else if (type === 'expense') {
+          account.balance = Number(account.balance) - amount;
+        }
+        await this.bankAccountRepository.save(account);
+      }
     }
 
     transaction.payment_date = paymentDto.payment_date || new Date();

@@ -1,24 +1,30 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In } from 'typeorm';
+import { Repository, MongoRepository, Between } from 'typeorm';
 import { ObjectId } from 'mongodb';
 import { Budget, RolloverPolicy } from './entities/budget.entity';
 import { BudgetAlert, AlertLevel } from './entities/budget-alert.entity';
 import { Transaction } from '../transaction/entities/transaction.entity';
+import { Subcategory } from '../subcategory/entities/subcategory.entity';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { WebhookService } from '../webhook/webhook.service';
 import { WebhookEventType } from '../webhook/entities/webhook-subscription.entity';
+import { toObjectId } from '../common/mongo.util';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
+import { paginate } from '../common/pagination/paginate.util';
 
 @Injectable()
 export class BudgetService {
   constructor(
     @InjectRepository(Budget)
-    private budgetRepository: Repository<Budget>,
+    private budgetRepository: MongoRepository<Budget>,
     @InjectRepository(BudgetAlert)
     private budgetAlertRepository: Repository<BudgetAlert>,
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
+    @InjectRepository(Subcategory)
+    private subcategoryRepository: Repository<Subcategory>,
     private webhookService: WebhookService,
   ) {}
 
@@ -31,14 +37,27 @@ export class BudgetService {
   ): Promise<Budget> {
     const budget = this.budgetRepository.create({
       userId,
-      categoryId: createBudgetDto.categoryId,
+      categoryId: toObjectId(createBudgetDto.categoryId),
       month: createBudgetDto.month,
       amount: createBudgetDto.amount,
-      rolloverPolicy: createBudgetDto.rolloverPolicy || RolloverPolicy.NO_ROLLOVER,
+      rolloverPolicy:
+        createBudgetDto.rolloverPolicy || RolloverPolicy.NO_ROLLOVER,
       spent: 0,
       created_by: userId,
     });
     return this.budgetRepository.save(budget);
+  }
+
+  /**
+   * Find all budgets for a user, paginated/searchable/sortable/filterable
+   */
+  findAll(userId: number, query: FindAllQueryDto) {
+    return paginate(this.budgetRepository, query, {
+      filterableFields: ['month', 'categoryId', 'rolloverPolicy'],
+      sortableFields: ['month', 'amount', 'spent', 'created_at', 'updated_at'],
+      defaultSort: { key: 'month', direction: 'desc' },
+      baseWhere: { userId },
+    });
   }
 
   /**
@@ -122,10 +141,30 @@ export class BudgetService {
    * Calculate spent amount for a budget based on expenses in that category/month
    */
   async calculateSpent(budgetId: ObjectId): Promise<number> {
-    const budget = await this.budgetRepository.findOne({ where: { _id: budgetId } as any });
+    const budget = await this.budgetRepository.findOne({
+      where: { _id: budgetId } as any,
+    });
     if (!budget) {
       return 0;
     }
+
+    // A budget scopes a whole category, but transactions link to a subcategory —
+    // resolve every subcategory under this budget's category before matching transactions.
+    // Re-hydrating an ObjectId fetched via TypeORM and reusing it directly in another
+    // find() does not match reliably against the mongodb driver — round-trip through
+    // ObjectId.createFromHexString() first (same fix already applied in paginate.util.ts).
+    const categoryId = ObjectId.createFromHexString(
+      budget.categoryId.toString(),
+    );
+    const subcategories = await this.subcategoryRepository.find({
+      where: { categoryId } as any,
+    });
+    if (subcategories.length === 0) {
+      return 0;
+    }
+    const subcategoryIds = subcategories.map((s) =>
+      ObjectId.createFromHexString(s.id.toString()),
+    );
 
     // Parse month string YYYY-MM to get start and end dates
     const [year, month] = budget.month.split('-');
@@ -133,13 +172,15 @@ export class BudgetService {
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1);
 
-    // Sum all expense transactions for this category in this month
+    // Sum all expense transactions for this category's subcategories in this month.
+    // TypeORM's In() operator does not match ObjectId values against the mongodb driver
+    // here — use the raw $in operator instead.
     const transactions = await this.transactionRepository.find({
       where: {
         type: 'expense',
-        subcategory_id: budget.categoryId,
-        created_at: Between(startDate, endDate),
-      },
+        subcategory_id: { $in: subcategoryIds },
+        created_at: { $gte: startDate, $lt: endDate },
+      } as any,
     });
 
     return transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
@@ -150,14 +191,18 @@ export class BudgetService {
    */
   async updateSpent(budgetId: ObjectId): Promise<Budget> {
     const spent = await this.calculateSpent(budgetId);
-    const budget = await this.budgetRepository.findOne({ where: { _id: budgetId } as any });
+    const budget = await this.budgetRepository.findOne({
+      where: { _id: budgetId } as any,
+    });
 
     if (!budget) {
       throw new Error('Budget not found');
     }
 
     budget.spent = spent;
-    return this.budgetRepository.save(budget);
+    const saved = await this.budgetRepository.save(budget);
+    await this.checkThresholds(budgetId);
+    return saved;
   }
 
   /**
@@ -165,7 +210,9 @@ export class BudgetService {
    * Returns newly created alerts
    */
   async checkThresholds(budgetId: ObjectId): Promise<BudgetAlert[]> {
-    const budget = await this.budgetRepository.findOne({ where: { _id: budgetId } as any });
+    const budget = await this.budgetRepository.findOne({
+      where: { _id: budgetId } as any,
+    });
     if (!budget) {
       return [];
     }
@@ -275,7 +322,9 @@ export class BudgetService {
    * Acknowledge an alert
    */
   async acknowledgeAlert(alertId: ObjectId): Promise<BudgetAlert> {
-    const alert = await this.budgetAlertRepository.findOne({ where: { _id: alertId } as any });
+    const alert = await this.budgetAlertRepository.findOne({
+      where: { _id: alertId } as any,
+    });
     if (!alert) {
       throw new Error('Alert not found');
     }
@@ -303,19 +352,26 @@ export class BudgetService {
 
     // Recalculate spent amounts
     for (const budget of budgets) {
-      await this.updateSpent(budget.id);
-      totalBudget += budget.amount;
-      totalSpent += budget.spent;
+      const updated = await this.updateSpent(budget.id);
+      totalBudget += updated.amount;
+      totalSpent += updated.spent;
     }
 
     const remaining = totalBudget - totalSpent;
-    const percentageUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+    const percentageUsed =
+      totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
-    // Fetch all alerts for this month
+    // Fetch all alerts for this month.
+    // TypeORM's In() operator does not match ObjectId values against the mongodb driver
+    // here — use the raw $in operator instead (same fix as calculateSpent above).
     const alerts = await this.budgetAlertRepository.find({
       where: {
-        budgetId: In(budgets.map((b) => b.id)),
-      },
+        budgetId: {
+          $in: budgets.map((b) =>
+            ObjectId.createFromHexString(b.id.toString()),
+          ),
+        },
+      } as any,
       order: { triggeredAt: 'DESC' },
     });
 

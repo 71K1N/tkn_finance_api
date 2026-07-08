@@ -9,4 +9,4 @@ export class PaymentTransactionDto {
 
   @IsNumber()
   paid_amount: number;
-} 
+}

@@ -1,24 +1,35 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { WishItem, WishItemStatus, WishItemPriority } from './entities/wish-item.entity';
+import { MongoRepository } from 'typeorm';
+import {
+  WishItem,
+  WishItemStatus,
+  WishItemPriority,
+} from './entities/wish-item.entity';
 import { CreateWishItemDto } from './dto/create-wish-item.dto';
 import { UpdateWishItemDto } from './dto/update-wish-item.dto';
 import { WebhookService } from '../webhook/webhook.service';
 import { WebhookEventType } from '../webhook/entities/webhook-subscription.entity';
 import { ObjectId } from 'mongodb';
+import { toObjectId } from '../common/mongo.util';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
+import { paginate } from '../common/pagination/paginate.util';
 
 @Injectable()
 export class WishItemService {
   constructor(
     @InjectRepository(WishItem)
-    private wishItemRepository: Repository<WishItem>,
+    private wishItemRepository: MongoRepository<WishItem>,
     private webhookService: WebhookService,
   ) {}
 
-  async create(userId: number, createWishItemDto: CreateWishItemDto): Promise<WishItem> {
+  async create(
+    userId: number,
+    createWishItemDto: CreateWishItemDto,
+  ): Promise<WishItem> {
     const priority =
-      (createWishItemDto.priority as WishItemPriority) || WishItemPriority.MEDIUM;
+      (createWishItemDto.priority as WishItemPriority) ||
+      WishItemPriority.MEDIUM;
 
     const wishItem = this.wishItemRepository.create({
       userId,
@@ -27,24 +38,29 @@ export class WishItemService {
       targetDate: createWishItemDto.targetDate,
       priority,
       status: WishItemStatus.ACTIVE,
-      linkedGoalId: createWishItemDto.linkedGoalId || null,
+      linkedGoalId: createWishItemDto.linkedGoalId
+        ? toObjectId(createWishItemDto.linkedGoalId)
+        : null,
       created_by: userId,
     });
     return this.wishItemRepository.save(wishItem);
   }
 
-  async findAll(userId: number): Promise<WishItem[]> {
-    return this.wishItemRepository.find({
-      where: { userId },
-      order: { created_at: 'DESC' },
-    });
-  }
-
-  async findByStatus(userId: number, status: string): Promise<WishItem[]> {
-    const statusEnum = status as WishItemStatus;
-    return this.wishItemRepository.find({
-      where: { userId, status: statusEnum },
-      order: { targetDate: 'ASC' },
+  findAll(userId: number, query: FindAllQueryDto) {
+    return paginate(this.wishItemRepository, query, {
+      searchableFields: ['name'],
+      filterableFields: ['status', 'priority', 'linkedGoalId'],
+      sortableFields: [
+        'name',
+        'estimatedCost',
+        'targetDate',
+        'priority',
+        'status',
+        'created_at',
+        'updated_at',
+      ],
+      defaultSort: { key: 'created_at', direction: 'desc' },
+      baseWhere: { userId },
     });
   }
 
@@ -58,7 +74,11 @@ export class WishItemService {
     return null;
   }
 
-  async update(id: ObjectId, userId: number, updateWishItemDto: UpdateWishItemDto): Promise<WishItem> {
+  async update(
+    id: ObjectId,
+    userId: number,
+    updateWishItemDto: UpdateWishItemDto,
+  ): Promise<WishItem> {
     const wishItem = await this.findOne(id, userId);
     if (!wishItem) {
       throw new Error('Wish item not found');
@@ -111,7 +131,11 @@ export class WishItemService {
     return updated;
   }
 
-  async linkToGoal(id: ObjectId, userId: number, goalId: ObjectId): Promise<WishItem> {
+  async linkToGoal(
+    id: ObjectId,
+    userId: number,
+    goalId: ObjectId,
+  ): Promise<WishItem> {
     const wishItem = await this.findOne(id, userId);
     if (!wishItem) {
       throw new Error('Wish item not found');

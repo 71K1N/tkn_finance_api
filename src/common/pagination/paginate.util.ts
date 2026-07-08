@@ -1,4 +1,5 @@
 import { FindOptionsOrder, MongoRepository, ObjectLiteral } from 'typeorm';
+import { ObjectId } from 'mongodb';
 import { FindAllQueryDto } from './find-all-query.dto';
 
 export interface PaginatedResult<T> {
@@ -17,6 +18,11 @@ export interface PaginateOptions {
   sortableFields?: string[];
   defaultSort?: { key: string; direction: 'asc' | 'desc' };
   maxPageSize?: number;
+  /**
+   * Mandatory scope (e.g. { userId }) applied regardless of query input.
+   * Always AND-ed with search/filter conditions — never derive this from user-controlled input.
+   */
+  baseWhere?: Record<string, any>;
 }
 
 function escapeRegExp(value: string): string {
@@ -30,9 +36,16 @@ export async function paginate<T extends ObjectLiteral>(
 ): Promise<PaginatedResult<T>> {
   const maxPageSize = options.maxPageSize ?? 100;
   const page = query.page > 0 ? query.page : 1;
-  const pageSize = Math.min(query.pageSize > 0 ? query.pageSize : 10, maxPageSize);
+  const pageSize = Math.min(
+    query.pageSize > 0 ? query.pageSize : 10,
+    maxPageSize,
+  );
 
   const conditions: Record<string, any>[] = [];
+
+  if (options.baseWhere && Object.keys(options.baseWhere).length) {
+    conditions.push(options.baseWhere);
+  }
 
   if (query.search && options.searchableFields?.length) {
     const regex = { $regex: escapeRegExp(query.search), $options: 'i' };
@@ -43,10 +56,22 @@ export async function paginate<T extends ObjectLiteral>(
 
   if (query.filters) {
     for (const [key, value] of Object.entries(query.filters)) {
-      if (typeof value !== 'string' || !value || !options.filterableFields?.includes(key)) {
+      if (
+        typeof value !== 'string' ||
+        !value ||
+        !options.filterableFields?.includes(key)
+      ) {
         continue;
       }
-      conditions.push({ [key]: { $regex: escapeRegExp(value), $options: 'i' } });
+      // Relation/id columns are stored as real ObjectId (BSON) values, which $regex cannot
+      // match against — a 24-char hex filter value is treated as an exact-match ObjectId lookup.
+      if (/^[a-fA-F0-9]{24}$/.test(value)) {
+        conditions.push({ [key]: ObjectId.createFromHexString(value) });
+        continue;
+      }
+      conditions.push({
+        [key]: { $regex: escapeRegExp(value), $options: 'i' },
+      });
     }
   }
 
@@ -60,7 +85,9 @@ export async function paginate<T extends ObjectLiteral>(
   let order: FindOptionsOrder<T> | undefined;
   const sort = query.sort ?? options.defaultSort;
   if (sort && options.sortableFields?.includes(sort.key)) {
-    order = { [sort.key]: sort.direction === 'asc' ? 'ASC' : 'DESC' } as FindOptionsOrder<T>;
+    order = {
+      [sort.key]: sort.direction === 'asc' ? 'ASC' : 'DESC',
+    } as FindOptionsOrder<T>;
   }
 
   const [data, totalItems] = await repository.findAndCount({

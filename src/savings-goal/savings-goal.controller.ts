@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   BadRequestException,
   NotFoundException,
@@ -22,6 +23,7 @@ import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { ObjectId } from 'mongodb';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @Controller('savings-goal')
 @UseGuards(AuthGuard)
@@ -41,24 +43,26 @@ export class SavingsGoalController {
   }
 
   @Get()
-  async findAll(@User() userId: number): Promise<SavingsGoalResponseDto[]> {
-    const goals = await this.savingsGoalService.findAll(userId);
-    return goals.map((g) => new SavingsGoalResponseDto(g));
+  async findAll(@User() userId: number, @Query() query: FindAllQueryDto) {
+    const result = await this.savingsGoalService.findAll(userId, query);
+    return {
+      data: result.data.map((g) => new SavingsGoalResponseDto(g)),
+      pagination: result.pagination,
+    };
   }
 
   @Get(':id')
   async findOne(
     @User() userId: number,
     @Param('id', MongoIdPipe) id: ObjectId,
-  ): Promise<SavingsGoalResponseDto & { linkedWishItems?: WishItemResponseDto[] }> {
+  ): Promise<
+    SavingsGoalResponseDto & { linkedWishItems?: WishItemResponseDto[] }
+  > {
     const goal = await this.savingsGoalService.findOne(id, userId);
     if (!goal) {
       throw new NotFoundException('Savings goal not found');
     }
-    const wishItems = await this.savingsGoalService.getWishItems(
-      id,
-      userId,
-    );
+    const wishItems = await this.savingsGoalService.getWishItems(id, userId);
     return {
       ...new SavingsGoalResponseDto(goal),
       linkedWishItems: wishItems.map((w) => new WishItemResponseDto(w)),
@@ -105,11 +109,7 @@ export class SavingsGoalController {
       throw new BadRequestException('amount must be a positive number');
     }
     try {
-      const goal = await this.savingsGoalService.deposit(
-        id,
-        userId,
-        amount,
-      );
+      const goal = await this.savingsGoalService.deposit(id, userId, amount);
       return new SavingsGoalResponseDto(goal);
     } catch (error) {
       if ((error as Error).message?.includes('not found')) {
@@ -131,11 +131,7 @@ export class SavingsGoalController {
       throw new BadRequestException('amount must be a positive number');
     }
     try {
-      const goal = await this.savingsGoalService.withdraw(
-        id,
-        userId,
-        amount,
-      );
+      const goal = await this.savingsGoalService.withdraw(id, userId, amount);
       return new SavingsGoalResponseDto(goal);
     } catch (error) {
       const message = (error as Error).message;

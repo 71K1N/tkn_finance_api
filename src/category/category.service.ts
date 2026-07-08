@@ -32,7 +32,9 @@ export class CategoryService {
   }
 
   async update(id: ObjectId, updateCategoryDto: UpdateCategoryDto) {
-    const category = await this.categoryRepository.findOne({ where: { _id: id } as any });
+    const category = await this.categoryRepository.findOne({
+      where: { _id: id } as any,
+    });
     if (!category) {
       throw new Error('Category not found');
     }

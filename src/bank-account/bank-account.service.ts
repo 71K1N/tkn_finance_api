@@ -3,15 +3,17 @@ import { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { BankAccount } from './entities/bank-account.entity';
-import { Repository } from 'typeorm';
+import { MongoRepository, Repository } from 'typeorm';
 import { Transaction } from 'src/transaction/entities/transaction.entity';
 import { ObjectId } from 'mongodb';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
+import { paginate } from '../common/pagination/paginate.util';
 
 @Injectable()
 export class BankAccountService {
   constructor(
     @InjectRepository(BankAccount)
-    private bankAccountRepository: Repository<BankAccount>,
+    private bankAccountRepository: MongoRepository<BankAccount>,
     @InjectRepository(Transaction)
     private transactionRepository: Repository<Transaction>,
   ) {}
@@ -19,16 +21,23 @@ export class BankAccountService {
     return this.bankAccountRepository.save(createBankAccountDto);
   }
 
-  findAll() {
-    return this.bankAccountRepository.find();
+  findAll(query: FindAllQueryDto) {
+    return paginate(this.bankAccountRepository, query, {
+      searchableFields: ['description'],
+      filterableFields: ['description'],
+      sortableFields: ['description', 'balance', 'created_at', 'updated_at'],
+      defaultSort: { key: 'created_at', direction: 'desc' },
+    });
   }
 
   findOne(id: ObjectId) {
-    return this.bankAccountRepository.find({ where: { _id: id } as any });
+    return this.bankAccountRepository.findOne({ where: { _id: id } as any });
   }
 
   async update(id: ObjectId, updateBankAccountDto: UpdateBankAccountDto) {
-    const account = await this.bankAccountRepository.findOne({ where: { _id: id } as any });
+    const account = await this.bankAccountRepository.findOne({
+      where: { _id: id } as any,
+    });
     if (!account) {
       throw new NotFoundException('Account not found');
     }
@@ -37,11 +46,18 @@ export class BankAccountService {
   }
 
   remove(id: ObjectId) {
-    return this.bankAccountRepository.delete(id);
+    return this.bankAccountRepository
+      .findOne({ where: { _id: id } as any })
+      .then((result) => this.bankAccountRepository.remove(result))
+      .catch(() => {
+        return 'Não pode ser excluido ... pq eu nao sei mesmo...';
+      });
   }
 
   async getBalance(id: ObjectId) {
-    const account = await this.bankAccountRepository.findOne({ where: { _id: id } as any });
+    const account = await this.bankAccountRepository.findOne({
+      where: { _id: id } as any,
+    });
     if (!account) {
       throw new NotFoundException('Account not found');
     }
@@ -49,6 +65,8 @@ export class BankAccountService {
   }
 
   async getTransactions(accountId: ObjectId) {
-    return this.transactionRepository.find({ where: { account_id: accountId } });
+    return this.transactionRepository.find({
+      where: { account_id: accountId },
+    });
   }
 }

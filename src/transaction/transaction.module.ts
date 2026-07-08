@@ -8,7 +8,10 @@ import { BankAccount } from '../bank-account/entities/bank-account.entity';
 import { Subcategory } from '../subcategory/entities/subcategory.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Transaction, BankAccount, Subcategory]), BudgetModule],
+  imports: [
+    TypeOrmModule.forFeature([Transaction, BankAccount, Subcategory]),
+    BudgetModule,
+  ],
   controllers: [TransactionController],
   providers: [TransactionService],
   exports: [TransactionService],

@@ -1,4 +1,11 @@
-import { IsString, IsNumber, IsPositive, IsOptional, IsDateString, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsPositive,
+  IsOptional,
+  IsDateString,
+  IsEnum,
+} from 'class-validator';
 
 export class UpdateWishItemDto {
   @IsOptional()

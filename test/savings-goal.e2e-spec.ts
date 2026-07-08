@@ -8,6 +8,10 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
   let app: INestApplication;
   const baseUrl = '/savings-goal';
   const authToken = 'Bearer 1'; // userId: 1
+  const nonExistentId = '507f1f77bcf86cd799439099';
+
+  // Resources created during the run, deleted in afterAll so the shared DB stays clean
+  const createdGoals: { id: string; token: string }[] = [];
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -27,6 +31,11 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
   });
 
   afterAll(async () => {
+    for (const { id, token } of createdGoals) {
+      await request(app.getHttpServer())
+        .delete(`${baseUrl}/${id}`)
+        .set('Authorization', token);
+    }
     await app.close();
   });
 
@@ -46,6 +55,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
       expect(response.body.monthlyAllocation).toBe(500);
       expect(response.body.currentSaved).toBe(0);
       expect(response.body.userId).toBe(1);
+      createdGoals.push({ id: response.body.id, token: authToken });
     });
 
     it('should reject without authorization', async () => {
@@ -97,26 +107,29 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
       expect(response.body).toHaveProperty('projectedCompletionDate');
       const projectedDate = new Date(response.body.projectedCompletionDate);
       expect(projectedDate).toBeInstanceOf(Date);
+      createdGoals.push({ id: response.body.id, token: authToken });
     });
   });
 
   describe('GET /savings-goal', () => {
     beforeAll(async () => {
-      await request(app.getHttpServer())
+      const goal1 = await request(app.getHttpServer())
         .post(baseUrl)
         .set('Authorization', authToken)
         .send({
           targetAmount: 10000,
           monthlyAllocation: 500,
         });
+      createdGoals.push({ id: goal1.body.id, token: authToken });
 
-      await request(app.getHttpServer())
+      const goal2 = await request(app.getHttpServer())
         .post(baseUrl)
         .set('Authorization', authToken)
         .send({
           targetAmount: 20000,
           monthlyAllocation: 1000,
         });
+      createdGoals.push({ id: goal2.body.id, token: authToken });
     });
 
     it('should list all savings goals for user', async () => {
@@ -125,11 +138,12 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
         .set('Authorization', authToken)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBeGreaterThanOrEqual(2);
-      expect(response.body[0]).toHaveProperty('id');
-      expect(response.body[0]).toHaveProperty('targetAmount');
-      expect(response.body[0]).toHaveProperty('currentSaved');
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThanOrEqual(2);
+      expect(response.body.data[0]).toHaveProperty('id');
+      expect(response.body.data[0]).toHaveProperty('targetAmount');
+      expect(response.body.data[0]).toHaveProperty('currentSaved');
+      expect(response.body).toHaveProperty('pagination');
     });
 
     it('should not expose other users goals', async () => {
@@ -143,13 +157,13 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
         .set('Authorization', 'Bearer 2')
         .expect(200);
 
-      expect(Array.isArray(user1Goals.body)).toBe(true);
-      expect(Array.isArray(user2Goals.body)).toBe(true);
+      expect(Array.isArray(user1Goals.body.data)).toBe(true);
+      expect(Array.isArray(user2Goals.body.data)).toBe(true);
     });
   });
 
   describe('GET /savings-goal/:id', () => {
-    let goalId: number;
+    let goalId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -160,6 +174,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
           monthlyAllocation: 750,
         });
       goalId = response.body.id;
+      createdGoals.push({ id: goalId, token: authToken });
     });
 
     it('should retrieve savings goal by id with all details', async () => {
@@ -176,7 +191,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent goal', async () => {
       await request(app.getHttpServer())
-        .get(`${baseUrl}/999999`)
+        .get(`${baseUrl}/${nonExistentId}`)
         .set('Authorization', authToken)
         .expect(404);
     });
@@ -192,7 +207,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
   });
 
   describe('PATCH /savings-goal/:id', () => {
-    let goalId: number;
+    let goalId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -203,6 +218,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
           monthlyAllocation: 600,
         });
       goalId = response.body.id;
+      createdGoals.push({ id: goalId, token: authToken });
     });
 
     it('should update target amount', async () => {
@@ -228,7 +244,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent goal', async () => {
       await request(app.getHttpServer())
-        .patch(`${baseUrl}/999999`)
+        .patch(`${baseUrl}/${nonExistentId}`)
         .set('Authorization', authToken)
         .send({ targetAmount: 20000 })
         .expect(404);
@@ -236,7 +252,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
   });
 
   describe('POST /savings-goal/:id/deposit', () => {
-    let goalId: number;
+    let goalId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -247,6 +263,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
           monthlyAllocation: 500,
         });
       goalId = response.body.id;
+      createdGoals.push({ id: goalId, token: authToken });
     });
 
     it('should deposit money into savings goal', async () => {
@@ -307,7 +324,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent goal', async () => {
       await request(app.getHttpServer())
-        .post(`${baseUrl}/999999/deposit`)
+        .post(`${baseUrl}/${nonExistentId}/deposit`)
         .set('Authorization', authToken)
         .send({ amount: 500 })
         .expect(404);
@@ -315,7 +332,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
   });
 
   describe('POST /savings-goal/:id/withdraw', () => {
-    let goalId: number;
+    let goalId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -326,6 +343,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
           monthlyAllocation: 500,
         });
       goalId = response.body.id;
+      createdGoals.push({ id: goalId, token: authToken });
 
       await request(app.getHttpServer())
         .post(`${baseUrl}/${goalId}/deposit`)
@@ -375,7 +393,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent goal', async () => {
       await request(app.getHttpServer())
-        .post(`${baseUrl}/999999/withdraw`)
+        .post(`${baseUrl}/${nonExistentId}/withdraw`)
         .set('Authorization', authToken)
         .send({ amount: 500 })
         .expect(404);
@@ -383,7 +401,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
   });
 
   describe('GET /savings-goal/:id/progress', () => {
-    let goalId: number;
+    let goalId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -394,6 +412,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
           monthlyAllocation: 1000,
         });
       goalId = response.body.id;
+      createdGoals.push({ id: goalId, token: authToken });
 
       await request(app.getHttpServer())
         .post(`${baseUrl}/${goalId}/deposit`)
@@ -443,14 +462,14 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent goal', async () => {
       await request(app.getHttpServer())
-        .get(`${baseUrl}/999999/progress`)
+        .get(`${baseUrl}/${nonExistentId}/progress`)
         .set('Authorization', authToken)
         .expect(404);
     });
   });
 
   describe('DELETE /savings-goal/:id', () => {
-    let goalId: number;
+    let goalId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -474,7 +493,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
 
     it('should return 404 when deleting non-existent goal', async () => {
       await request(app.getHttpServer())
-        .delete(`${baseUrl}/999999`)
+        .delete(`${baseUrl}/${nonExistentId}`)
         .set('Authorization', authToken)
         .expect(404);
     });
@@ -503,7 +522,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
   });
 
   describe('Authorization & Data Isolation', () => {
-    let user1GoalId: number;
+    let user1GoalId: string;
 
     beforeAll(async () => {
       const response = await request(app.getHttpServer())
@@ -514,6 +533,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
           monthlyAllocation: 500,
         });
       user1GoalId = response.body.id;
+      createdGoals.push({ id: user1GoalId, token: 'Bearer 1' });
     });
 
     it('should isolate goals between different users', async () => {
@@ -534,6 +554,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
           targetAmount: 10000,
           monthlyAllocation: 500,
         });
+      createdGoals.push({ id: goalResponse.body.id, token: 'Bearer 2' });
 
       // Try to deposit to user 2's goal as user 1 (impossible since user 1 can't access goal)
       await request(app.getHttpServer())
@@ -558,6 +579,7 @@ describe('Savings Goal Workflow (P3-E2E)', () => {
       expect(response.body).toHaveProperty('updated_at');
       expect(response.body).toHaveProperty('created_by');
       expect(response.body.created_by).toBe(1);
+      createdGoals.push({ id: response.body.id, token: authToken });
     });
   });
 });

@@ -20,6 +20,7 @@ import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { ObjectId } from 'mongodb';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @Controller('wish-item')
 @UseGuards(AuthGuard)
@@ -42,22 +43,12 @@ export class WishItemController {
   }
 
   @Get()
-  async findAll(
-    @User() userId: number,
-    @Query('status') status?: string,
-  ): Promise<WishItemResponseDto[]> {
-    let wishItems;
-    if (status) {
-      if (!['active', 'completed', 'abandoned', 'on_hold'].includes(status)) {
-        throw new BadRequestException(
-          'status must be one of: active, completed, abandoned, on_hold',
-        );
-      }
-      wishItems = await this.wishItemService.findByStatus(userId, status);
-    } else {
-      wishItems = await this.wishItemService.findAll(userId);
-    }
-    return wishItems.map((w) => new WishItemResponseDto(w));
+  async findAll(@User() userId: number, @Query() query: FindAllQueryDto) {
+    const result = await this.wishItemService.findAll(userId, query);
+    return {
+      data: result.data.map((w) => new WishItemResponseDto(w)),
+      pagination: result.pagination,
+    };
   }
 
   @Get(':id')

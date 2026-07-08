@@ -1,4 +1,12 @@
-import { IsString, IsNumber, IsPositive, IsOptional, IsDateString, IsEnum, IsMongoId } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsPositive,
+  IsOptional,
+  IsDateString,
+  IsEnum,
+  IsMongoId,
+} from 'class-validator';
 
 export class CreateWishItemDto {
   @IsString()

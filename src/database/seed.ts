@@ -73,8 +73,12 @@ async function seed() {
     }
 
     console.log('\nResumo:');
-    console.log(`Categorias: ${categoriesCreated} criadas, ${categoriesSkipped} ignoradas`);
-    console.log(`Subcategorias: ${subcategoriesCreated} criadas, ${subcategoriesSkipped} ignoradas`);
+    console.log(
+      `Categorias: ${categoriesCreated} criadas, ${categoriesSkipped} ignoradas`,
+    );
+    console.log(
+      `Subcategorias: ${subcategoriesCreated} criadas, ${subcategoriesSkipped} ignoradas`,
+    );
   } catch (err) {
     console.error('Erro ao executar o seed:', err);
     process.exitCode = 1;

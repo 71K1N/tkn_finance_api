@@ -273,7 +273,9 @@ describe('Budget Alert Triggering Integration (P2-E2E)', () => {
         .get(`${budgetBaseUrl}?month=2026-05`)
         .set('Authorization', authToken);
 
-      const budget = budgetsResponse.body.find((b) => b.id === alertTestBudgetId);
+      const budget = budgetsResponse.body.find(
+        (b) => b.id === alertTestBudgetId,
+      );
       const alert = budget.alerts[0];
       alertId = alert.id;
     });
@@ -292,7 +294,9 @@ describe('Budget Alert Triggering Integration (P2-E2E)', () => {
         .get(`${budgetBaseUrl}?month=2026-05`)
         .set('Authorization', authToken);
 
-      const budget = budgetsResponse.body.find((b) => b.id === alertTestBudgetId);
+      const budget = budgetsResponse.body.find(
+        (b) => b.id === alertTestBudgetId,
+      );
       const alert = budget.alerts.find((a) => a.id === alertId);
       expect(alert.acknowledged).toBe(true);
     });

@@ -9,6 +9,10 @@ describe('Wish List Workflow (P3-E2E)', () => {
   let app: INestApplication;
   const baseUrl = '/wish-item';
   const authToken = 'Bearer 1'; // userId: 1
+  const nonExistentId = '507f1f77bcf86cd799439099';
+
+  // Resources created during the run, deleted in afterAll so the shared DB stays clean
+  const createdIds: string[] = [];
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -28,6 +32,11 @@ describe('Wish List Workflow (P3-E2E)', () => {
   });
 
   afterAll(async () => {
+    for (const id of createdIds) {
+      await request(app.getHttpServer())
+        .delete(`${baseUrl}/${id}`)
+        .set('Authorization', authToken);
+    }
     await app.close();
   });
 
@@ -50,6 +59,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
       expect(response.body.status).toBe('active');
       expect(response.body.priority).toBe('high');
       expect(response.body.userId).toBe(1);
+      createdIds.push(response.body.id);
     });
 
     it('should reject wish item without authorization', async () => {
@@ -96,7 +106,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
   describe('GET /wish-item', () => {
     beforeAll(async () => {
       // Create test wish items
-      await request(app.getHttpServer())
+      const item1 = await request(app.getHttpServer())
         .post(baseUrl)
         .set('Authorization', authToken)
         .send({
@@ -105,8 +115,9 @@ describe('Wish List Workflow (P3-E2E)', () => {
           targetDate: '2026-12-31',
           priority: 'high',
         });
+      createdIds.push(item1.body.id);
 
-      await request(app.getHttpServer())
+      const item2 = await request(app.getHttpServer())
         .post(baseUrl)
         .set('Authorization', authToken)
         .send({
@@ -115,6 +126,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
           targetDate: '2026-06-30',
           priority: 'low',
         });
+      createdIds.push(item2.body.id);
     });
 
     it('should list all wish items for user', async () => {
@@ -123,41 +135,42 @@ describe('Wish List Workflow (P3-E2E)', () => {
         .set('Authorization', authToken)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBeGreaterThanOrEqual(2);
-      expect(response.body[0]).toHaveProperty('id');
-      expect(response.body[0]).toHaveProperty('name');
-      expect(response.body[0]).toHaveProperty('status');
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThanOrEqual(2);
+      expect(response.body.data[0]).toHaveProperty('id');
+      expect(response.body.data[0]).toHaveProperty('name');
+      expect(response.body.data[0]).toHaveProperty('status');
+      expect(response.body).toHaveProperty('pagination');
     });
 
     it('should filter wish items by status=active', async () => {
       const response = await request(app.getHttpServer())
-        .get(`${baseUrl}?status=active`)
+        .get(`${baseUrl}?filters[status]=active`)
         .set('Authorization', authToken)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      response.body.forEach((item) => {
+      expect(Array.isArray(response.body.data)).toBe(true);
+      response.body.data.forEach((item) => {
         expect(item.status).toBe('active');
       });
     });
 
     it('should return empty list for status=completed', async () => {
       const response = await request(app.getHttpServer())
-        .get(`${baseUrl}?status=completed`)
+        .get(`${baseUrl}?filters[status]=completed`)
         .set('Authorization', authToken)
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
     });
 
-    it('should reject invalid status query param', async () => {
+    it('should return an empty list for a status value that matches nothing (generic filter, no enum validation)', async () => {
       const response = await request(app.getHttpServer())
-        .get(`${baseUrl}?status=invalid`)
+        .get(`${baseUrl}?filters[status]=invalid`)
         .set('Authorization', authToken)
-        .expect(400);
+        .expect(200);
 
-      expect(response.body.error).toBeDefined();
+      expect(response.body.data).toEqual([]);
     });
   });
 
@@ -175,6 +188,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
           priority: 'medium',
         });
       wishItemId = response.body.id;
+      createdIds.push(response.body.id);
     });
 
     it('should retrieve wish item by id', async () => {
@@ -190,7 +204,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent wish item', async () => {
       await request(app.getHttpServer())
-        .get(`${baseUrl}/999999`)
+        .get(`${baseUrl}/${nonExistentId}`)
         .set('Authorization', authToken)
         .expect(404);
     });
@@ -219,6 +233,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
           priority: 'low',
         });
       wishItemId = response.body.id;
+      createdIds.push(response.body.id);
     });
 
     it('should update wish item name', async () => {
@@ -254,7 +269,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent wish item', async () => {
       await request(app.getHttpServer())
-        .patch(`${baseUrl}/999999`)
+        .patch(`${baseUrl}/${nonExistentId}`)
         .set('Authorization', authToken)
         .send({ name: 'New Name' })
         .expect(404);
@@ -275,6 +290,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
           priority: 'medium',
         });
       wishItemId = response.body.id;
+      createdIds.push(response.body.id);
     });
 
     it('should update status from active to completed', async () => {
@@ -319,7 +335,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
 
     it('should return 404 for non-existent wish item', async () => {
       await request(app.getHttpServer())
-        .patch(`${baseUrl}/999999/status`)
+        .patch(`${baseUrl}/${nonExistentId}/status`)
         .set('Authorization', authToken)
         .send({ status: 'completed' })
         .expect(404);
@@ -353,7 +369,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
 
     it('should return 404 when deleting non-existent item', async () => {
       await request(app.getHttpServer())
-        .delete(`${baseUrl}/999999`)
+        .delete(`${baseUrl}/${nonExistentId}`)
         .set('Authorization', authToken)
         .expect(404);
     });
@@ -397,6 +413,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
           priority: 'high',
         });
       userId1Item = response.body.id;
+      createdIds.push(response.body.id);
     });
 
     it('should isolate data between different users', async () => {
@@ -414,8 +431,8 @@ describe('Wish List Workflow (P3-E2E)', () => {
         .set('Authorization', 'Bearer 1')
         .expect(200);
 
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBeGreaterThan(0);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
     });
 
     it('user 2 should not see user 1 items', async () => {
@@ -424,7 +441,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
         .set('Authorization', 'Bearer 2')
         .expect(200);
 
-      expect(Array.isArray(user2Response.body)).toBe(true);
+      expect(Array.isArray(user2Response.body.data)).toBe(true);
     });
   });
 
@@ -443,6 +460,7 @@ describe('Wish List Workflow (P3-E2E)', () => {
       expect(response.body).toHaveProperty('updated_at');
       expect(response.body).toHaveProperty('created_by');
       expect(response.body.created_by).toBe(1);
+      createdIds.push(response.body.id);
     });
   });
 });
