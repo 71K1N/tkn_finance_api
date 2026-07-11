@@ -40,6 +40,11 @@ export class BankAccountController {
     return this.bankAccountService.findAll(query);
   }
 
+  @Get('total-balance')
+  async getTotalBalance() {
+    return { totalBalance: await this.bankAccountService.getTotalBalance() };
+  }
+
   @Get(':id/balance')
   getBalance(@Param('id', MongoIdPipe) id: ObjectId) {
     return this.bankAccountService.getBalance(id);

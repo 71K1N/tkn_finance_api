@@ -42,8 +42,40 @@ export class TransactionController {
   }
 
   @Get('summary')
-  getSummary(@User() userId: number) {
-    return this.transactionService.getSummary(userId);
+  getSummary(@User() userId: number, @Query('month') month?: string) {
+    return this.transactionService.getSummary(userId, month);
+  }
+
+  @Get('category-breakdown')
+  getCategoryBreakdown(@User() userId: number, @Query('month') month?: string) {
+    return this.transactionService.getCategoryBreakdown(userId, month);
+  }
+
+  @Get('monthly-trend')
+  getMonthlyTrend(@User() userId: number, @Query('months') months?: string) {
+    return this.transactionService.getMonthlyTrend(
+      userId,
+      months ? Number(months) : undefined,
+    );
+  }
+
+  @Get('balance-evolution')
+  getBalanceEvolution(
+    @User() userId: number,
+    @Query('months') months?: string,
+  ) {
+    return this.transactionService.getBalanceEvolution(
+      userId,
+      months ? Number(months) : undefined,
+    );
+  }
+
+  @Get('forecasted-expenses')
+  getForecastedExpenses(
+    @User() userId: number,
+    @Query('month') month?: string,
+  ) {
+    return this.transactionService.getForecastedExpenses(userId, month);
   }
 
   @Get(':id')

@@ -10,6 +10,7 @@ export class SavingsGoalProgressDto {
 export class SavingsGoalResponseDto {
   id: string;
   userId: number;
+  name: string;
   targetAmount: number;
   currentSaved: number;
   monthlyAllocation: number;

@@ -24,6 +24,7 @@ export class SavingsGoalService {
   ): Promise<SavingsGoal> {
     const goal = this.savingsGoalRepository.create({
       userId,
+      name: createSavingsGoalDto.name,
       targetAmount: createSavingsGoalDto.targetAmount,
       currentSaved: 0,
       monthlyAllocation: createSavingsGoalDto.monthlyAllocation,
@@ -72,6 +73,9 @@ export class SavingsGoalService {
       throw new Error('Savings goal not found');
     }
 
+    if (updateSavingsGoalDto.name !== undefined) {
+      goal.name = updateSavingsGoalDto.name;
+    }
     if (updateSavingsGoalDto.targetAmount !== undefined) {
       goal.targetAmount = updateSavingsGoalDto.targetAmount;
     }

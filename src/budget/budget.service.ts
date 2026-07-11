@@ -45,7 +45,10 @@ export class BudgetService {
       spent: 0,
       created_by: userId,
     });
-    return this.budgetRepository.save(budget);
+    const saved = await this.budgetRepository.save(budget);
+    // Pre-existing paid expenses for this category/month must count immediately,
+    // not just after the next GET/transaction event triggers a recalculation.
+    return this.updateSpent(saved.id);
   }
 
   /**
@@ -80,6 +83,23 @@ export class BudgetService {
     return this.budgetRepository.find({
       where: { userId, month: Between(startMonth, endMonth) },
       order: { month: 'DESC' },
+    });
+  }
+
+  /**
+   * Find the budget for a specific user/category/month, if one exists
+   */
+  async findByCategoryAndMonth(
+    userId: number,
+    categoryId: ObjectId,
+    month: string,
+  ): Promise<Budget | null> {
+    return this.budgetRepository.findOne({
+      where: {
+        userId,
+        categoryId: ObjectId.createFromHexString(categoryId.toString()),
+        month,
+      } as any,
     });
   }
 
@@ -172,14 +192,18 @@ export class BudgetService {
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1);
 
-    // Sum all expense transactions for this category's subcategories in this month.
+    // Sum all *paid* expense transactions for this category's subcategories in this
+    // month. Transactions are stored with type 'EXPENSE'/'INCOME' (uppercase — see
+    // seed.ts and TransactionService's aggregations) and spending is counted by
+    // payment_date (when the money actually moved), not created_at (when the record
+    // was registered) — same convention as TransactionService.getMonthlyTrend.
     // TypeORM's In() operator does not match ObjectId values against the mongodb driver
     // here — use the raw $in operator instead.
     const transactions = await this.transactionRepository.find({
       where: {
-        type: 'expense',
+        type: 'EXPENSE',
         subcategory_id: { $in: subcategoryIds },
-        created_at: { $gte: startDate, $lt: endDate },
+        payment_date: { $gte: startDate, $lt: endDate },
       } as any,
     });
 

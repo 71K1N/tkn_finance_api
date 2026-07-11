@@ -11,6 +11,7 @@ import { WishItemModule } from './wish-item/wish-item.module';
 import { SavingsGoalModule } from './savings-goal/savings-goal.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { ExpenseGroupModule } from './expense-group/expense-group.module';
+import { InsightsModule } from './insights/insights.module';
 import { Category } from './category/entities/category.entity';
 import { Subcategory } from './subcategory/entities/subcategory.entity';
 import { Transaction } from './transaction/entities/transaction.entity';
@@ -24,6 +25,7 @@ import { ExpenseGroup } from './expense-group/entities/expense-group.entity';
 import { GroupExpense } from './expense-group/entities/group-expense.entity';
 import { ExpenseSplit } from './expense-group/entities/expense-split.entity';
 import { ExpenseSettlement } from './expense-group/entities/expense-settlement.entity';
+import { InsightSnapshot } from './insights/entities/insight-snapshot.entity';
 
 @Module({
   imports: [
@@ -45,6 +47,7 @@ import { ExpenseSettlement } from './expense-group/entities/expense-settlement.e
         GroupExpense,
         ExpenseSplit,
         ExpenseSettlement,
+        InsightSnapshot,
       ],
       synchronize: true,
       logging: true,
@@ -57,6 +60,7 @@ import { ExpenseSettlement } from './expense-group/entities/expense-settlement.e
     SavingsGoalModule,
     WebhookModule,
     ExpenseGroupModule,
+    InsightsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

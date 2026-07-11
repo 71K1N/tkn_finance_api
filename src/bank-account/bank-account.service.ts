@@ -54,6 +54,11 @@ export class BankAccountService {
       });
   }
 
+  async getTotalBalance(): Promise<number> {
+    const accounts = await this.bankAccountRepository.find();
+    return accounts.reduce((sum, a) => sum + Number(a.balance), 0);
+  }
+
   async getBalance(id: ObjectId) {
     const account = await this.bankAccountRepository.findOne({
       where: { _id: id } as any,

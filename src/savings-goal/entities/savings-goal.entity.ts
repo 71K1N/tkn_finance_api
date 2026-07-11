@@ -16,6 +16,9 @@ export class SavingsGoal {
   userId: number;
 
   @Column()
+  name: string;
+
+  @Column()
   targetAmount: number;
 
   @Column({ default: 0 })
