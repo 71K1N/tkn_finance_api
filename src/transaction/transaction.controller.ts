@@ -17,7 +17,7 @@ import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { ObjectId } from 'mongodb';
-import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
+import { FindAllTransactionQueryDto } from './dto/find-all-transaction-query.dto';
 
 @UseGuards(AuthGuard)
 @Controller('transaction')
@@ -37,13 +37,34 @@ export class TransactionController {
   }
 
   @Get()
-  findAll(@User() userId: number, @Query() query: FindAllQueryDto) {
-    return this.transactionService.findAll(userId, query);
+  findAll(@User() userId: number, @Query() query: FindAllTransactionQueryDto) {
+    return this.transactionService.findAll(userId, query, {
+      from: query.from,
+      to: query.to,
+      category_id: query.category_id,
+    });
   }
 
   @Get('summary')
-  getSummary(@User() userId: number, @Query('month') month?: string) {
-    return this.transactionService.getSummary(userId, month);
+  getSummary(
+    @User() userId: number,
+    @Query('month') month?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('type') type?: string,
+    @Query('account_id') account_id?: string,
+    @Query('category_id') category_id?: string,
+    @Query('subcategory_id') subcategory_id?: string,
+  ) {
+    return this.transactionService.getSummary(userId, {
+      month,
+      from,
+      to,
+      type,
+      account_id,
+      category_id,
+      subcategory_id,
+    });
   }
 
   @Get('category-breakdown')

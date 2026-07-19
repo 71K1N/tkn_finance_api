@@ -138,7 +138,32 @@ export class TransactionService {
     return saved as TransactionResponseDto;
   }
 
-  findAll(userId: number, query: FindAllQueryDto) {
+  async findAll(
+    userId: number,
+    query: FindAllQueryDto,
+    dateRange?: { from?: string; to?: string; category_id?: string },
+  ) {
+    const baseWhere: Record<string, any> = { user_id: userId };
+    // due_date is always stored as a plain "YYYY-MM-DD" string (see create/update DTOs,
+    // no Date transform applied), so a string $gte/$lte range is reliable here — unlike
+    // payment_date, which is sometimes a real Date (see getForecastedExpenses comment).
+    if (dateRange?.from || dateRange?.to) {
+      baseWhere.due_date = {
+        ...(dateRange.from && { $gte: dateRange.from }),
+        ...(dateRange.to && { $lte: dateRange.to }),
+      };
+    }
+
+    // Only resolve category_id → subcategory_id list when the caller hasn't already
+    // narrowed to one specific subcategory via the generic filters[] mechanism.
+    if (dateRange?.category_id && !query.filters?.subcategory_id) {
+      baseWhere.subcategory_id = {
+        $in: await this.resolveSubcategoryIdsForCategory(
+          dateRange.category_id,
+        ),
+      };
+    }
+
     return paginate(this.transactionRepository, query, {
       searchableFields: ['name', 'description'],
       filterableFields: [
@@ -158,7 +183,7 @@ export class TransactionService {
         'updated_at',
       ],
       defaultSort: { key: 'created_at', direction: 'desc' },
-      baseWhere: { user_id: userId },
+      baseWhere,
     });
   }
 
@@ -166,11 +191,46 @@ export class TransactionService {
     return this.transactionRepository.findOne({ where: { _id: id } as any });
   }
 
-  async getSummary(userId: number, month?: string) {
+  async getSummary(
+    userId: number,
+    params?: {
+      month?: string;
+      from?: string;
+      to?: string;
+      type?: string;
+      account_id?: string;
+      category_id?: string;
+      subcategory_id?: string;
+    },
+  ) {
     const match: Record<string, unknown> = { user_id: userId };
-    if (month) {
-      const { startDate, endDate } = this.monthToRange(month);
+
+    if (params?.from || params?.to) {
+      // Same due_date-as-string reasoning as findAll: sums every transaction due in the
+      // period regardless of payment status, matching what the transaction list shows.
+      match.due_date = {
+        ...(params.from && { $gte: params.from }),
+        ...(params.to && { $lte: params.to }),
+      };
+    } else if (params?.month) {
+      const { startDate, endDate } = this.monthToRange(params.month);
       match.payment_date = { $gte: startDate, $lt: endDate };
+    }
+
+    if (params?.type) {
+      match.type = params.type.toUpperCase();
+    }
+    if (params?.account_id) {
+      match.account_id = ObjectId.createFromHexString(params.account_id);
+    }
+    if (params?.subcategory_id) {
+      match.subcategory_id = ObjectId.createFromHexString(
+        params.subcategory_id,
+      );
+    } else if (params?.category_id) {
+      match.subcategory_id = {
+        $in: await this.resolveSubcategoryIdsForCategory(params.category_id),
+      };
     }
 
     const results = (await this.transactionRepository
@@ -461,6 +521,15 @@ export class TransactionService {
   private async getCurrentTotalBalance(): Promise<number> {
     const accounts = await this.bankAccountRepository.find();
     return accounts.reduce((sum, a) => sum + Number(a.balance), 0);
+  }
+
+  private async resolveSubcategoryIdsForCategory(
+    categoryId: string,
+  ): Promise<ObjectId[]> {
+    const subcategories = await this.subcategoryRepository.find({
+      where: { categoryId: toObjectId(categoryId) } as any,
+    });
+    return subcategories.map((s) => s.id);
   }
 
   private currentMonthString(): string {

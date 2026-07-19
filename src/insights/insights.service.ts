@@ -128,7 +128,7 @@ export class InsightsService {
       totalBalance,
       savingsGoalsResult,
     ] = await Promise.all([
-      this.transactionService.getSummary(userId, month),
+      this.transactionService.getSummary(userId, { month }),
       this.transactionService.getMonthlyTrend(userId, 6),
       this.transactionService.getCategoryBreakdown(userId, month),
       Promise.all(
