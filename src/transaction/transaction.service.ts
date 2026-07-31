@@ -1,4 +1,10 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -158,9 +164,7 @@ export class TransactionService {
     // narrowed to one specific subcategory via the generic filters[] mechanism.
     if (dateRange?.category_id && !query.filters?.subcategory_id) {
       baseWhere.subcategory_id = {
-        $in: await this.resolveSubcategoryIdsForCategory(
-          dateRange.category_id,
-        ),
+        $in: await this.resolveSubcategoryIdsForCategory(dateRange.category_id),
       };
     }
 
@@ -626,7 +630,9 @@ export class TransactionService {
     // ObjectId, which breaks every $in/equality query matched against these fields
     // (e.g. BudgetService.calculateSpent).
     if (updateTransactionDto.subcategory_id !== undefined) {
-      transaction.subcategory_id = toObjectId(updateTransactionDto.subcategory_id);
+      transaction.subcategory_id = toObjectId(
+        updateTransactionDto.subcategory_id,
+      );
     }
     if (updateTransactionDto.account_id !== undefined) {
       transaction.account_id = toObjectId(updateTransactionDto.account_id);
@@ -669,29 +675,30 @@ export class TransactionService {
       where: { _id: id } as any,
     });
     if (!transaction) {
-      throw new Error('Transaction not found');
+      throw new NotFoundException('Transaction not found');
     }
 
-    // Balance only moves when a transaction is actually paid/received, not at creation
-    // (creation just registers a pending due amount). Guard against double-applying the
-    // balance change if this transaction was already paid before.
-    if (!transaction.payment_date) {
-      const accountId = ObjectId.createFromHexString(
-        transaction.account_id.toString(),
-      );
-      const account = await this.bankAccountRepository.findOne({
-        where: { _id: accountId } as any,
-      });
-      if (account) {
-        const amount = Number(paymentDto.paid_amount);
-        const type = (transaction.type || '').toLowerCase();
-        if (type === 'income') {
-          account.balance = Number(account.balance) + amount;
-        } else if (type === 'expense') {
-          account.balance = Number(account.balance) - amount;
-        }
-        await this.bankAccountRepository.save(account);
+    // Guard against re-paying a transaction that was already paid before -
+    // both the balance mutation and the record update must be skipped, not just the balance.
+    if (transaction.payment_date) {
+      throw new ConflictException('Transaction is already paid');
+    }
+
+    const accountId = ObjectId.createFromHexString(
+      transaction.account_id.toString(),
+    );
+    const account = await this.bankAccountRepository.findOne({
+      where: { _id: accountId } as any,
+    });
+    if (account) {
+      const amount = Number(paymentDto.paid_amount);
+      const type = (transaction.type || '').toLowerCase();
+      if (type === 'income') {
+        account.balance = Number(account.balance) + amount;
+      } else if (type === 'expense') {
+        account.balance = Number(account.balance) - amount;
       }
+      await this.bankAccountRepository.save(account);
     }
 
     transaction.payment_date = paymentDto.payment_date || new Date();
