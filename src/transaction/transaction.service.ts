@@ -23,6 +23,12 @@ import { paginate } from '../common/pagination/paginate.util';
 
 const UNCATEGORIZED_LABEL = 'Sem categoria';
 
+// due_date is typed as Date on the DTO but arrives as a plain string at runtime
+// (validated via @IsDateString()), so this accepts either representation.
+function hasDueDate(dueDate: unknown): boolean {
+  return !!dueDate && dueDate !== '';
+}
+
 @Injectable()
 export class TransactionService {
   constructor(
@@ -88,7 +94,7 @@ export class TransactionService {
       //   throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
       // }
 
-      const isPlanned = !!createTransactionDto.due_date && createTransactionDto.due_date !== '';
+      const isPlanned = hasDueDate(createTransactionDto.due_date);
 
       const sourceTx = await this.transactionRepository.save({
         ...createTransactionDto,
@@ -117,7 +123,7 @@ export class TransactionService {
       return sourceTx as TransactionResponseDto;
     }
 
-    const isPlanned = !!createTransactionDto.due_date && createTransactionDto.due_date !== '';
+    const isPlanned = hasDueDate(createTransactionDto.due_date);
 
     const payload = {
       ...(createTransactionDto as any),
@@ -549,7 +555,10 @@ export class TransactionService {
     return trend.map((t, i) => ({ month: t.month, balance: balances[i] }));
   }
 
-  async getPlannedVsUnplanned(userId: number, month?: string): Promise<{
+  async getPlannedVsUnplanned(
+    userId: number,
+    month?: string,
+  ): Promise<{
     month: string;
     planned: { total: number; count: number };
     unplanned: { total: number; count: number };
