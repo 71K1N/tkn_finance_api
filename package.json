@@ -20,7 +20,9 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "ts-node src/database/seed.ts",
     "recalculate-budgets": "ts-node src/database/recalculate-budgets.ts",
-    "migrate:populate-is-planned": "ts-node src/migrations/run-populate-is-planned.ts"
+    "migrate:populate-is-planned": "ts-node src/migrations/run-populate-is-planned.ts",
+    "migrate:populate-transaction-user-id": "ts-node src/migrations/run-populate-transaction-user-id.ts",
+    "migrate:fix-payment-date-timezone": "ts-node src/migrations/run-fix-payment-date-timezone.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

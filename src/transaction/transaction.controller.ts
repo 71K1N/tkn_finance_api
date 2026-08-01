@@ -26,14 +26,10 @@ export class TransactionController {
 
   @Post()
   create(
-    @User() user: any,
+    @User() userId: number,
     @Body() createTransactionDto: CreateTransactionDto,
   ) {
-    // user is injected by AuthGuard. Assign user_id from authenticated user for data isolation.
-    if (user && user.id) {
-      createTransactionDto.user_id = user.id;
-    }
-    return this.transactionService.create(createTransactionDto);
+    return this.transactionService.create(createTransactionDto, userId);
   }
 
   @Get()
@@ -108,30 +104,30 @@ export class TransactionController {
   }
 
   @Get(':id')
-  findOne(@Param('id', MongoIdPipe) id: ObjectId) {
-    return this.transactionService.findOne(id);
+  findOne(@User() userId: number, @Param('id', MongoIdPipe) id: ObjectId) {
+    return this.transactionService.findOne(id, userId);
   }
 
   @Patch(':id')
   update(
-    @User() user: any,
+    @User() userId: number,
     @Param('id', MongoIdPipe) id: ObjectId,
     @Body() updateTransactionDto: UpdateTransactionDto,
   ) {
-    return this.transactionService.update(id, updateTransactionDto, user?.id);
+    return this.transactionService.update(id, updateTransactionDto, userId);
   }
 
   @Delete(':id')
-  remove(@Param('id', MongoIdPipe) id: ObjectId) {
-    return this.transactionService.remove(id);
+  remove(@User() userId: number, @Param('id', MongoIdPipe) id: ObjectId) {
+    return this.transactionService.remove(id, userId);
   }
 
   @Post(':id/payment')
   payment(
-    @User() user: any,
+    @User() userId: number,
     @Param('id', MongoIdPipe) id: ObjectId,
     @Body() paymentDto: PaymentTransactionDto,
   ) {
-    return this.transactionService.payment(id, paymentDto, user?.id);
+    return this.transactionService.payment(id, paymentDto, userId);
   }
 }

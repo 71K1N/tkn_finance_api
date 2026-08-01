@@ -13,6 +13,9 @@ RUN npm run build
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Month aggregations resolve their own timezone via APP_TIMEZONE, but keeping the
+# container clock aligned makes logs and any remaining local Date usage match.
+ENV TZ=America/Sao_Paulo
 
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

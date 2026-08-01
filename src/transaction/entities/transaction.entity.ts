@@ -48,6 +48,17 @@ export class Transaction {
   @Column({ nullable: true })
   is_planned?: boolean;
 
+  // Shared by both legs of a transfer so they can be edited/deleted as one unit.
+  // Absent on income/expense transactions and on transfers created before this field existed.
+  @Column({ nullable: true })
+  transfer_group_id?: ObjectId | null;
+
+  // True on the mirror leg written into the target account's history (see
+  // TransactionService.create). The mirror carries no balance effect of its own —
+  // the transfer's single balance movement is owned by the other (authoritative) leg.
+  @Column({ nullable: true })
+  is_transfer_mirror?: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

@@ -10,6 +10,11 @@ import { TransactionService } from '../transaction/transaction.service';
 import { BudgetService } from '../budget/budget.service';
 import { BankAccountService } from '../bank-account/bank-account.service';
 import { SavingsGoalService } from '../savings-goal/savings-goal.service';
+import {
+  currentMonthString,
+  monthsBefore,
+  todayString,
+} from '../common/date/month-range.util';
 
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 const ANOMALY_THRESHOLD_MULTIPLIER = 1.5;
@@ -63,7 +68,7 @@ export class InsightsService {
   }
 
   async getOrCreate(userId: number): Promise<InsightSnapshot> {
-    const today = this.todayString();
+    const today = todayString();
     const existing = await this.insightSnapshotRepository.findOne({
       where: { userId, date: today } as any,
     });
@@ -74,7 +79,7 @@ export class InsightsService {
   }
 
   async refresh(userId: number): Promise<InsightSnapshot> {
-    const today = this.todayString();
+    const today = todayString();
     await this.insightSnapshotRepository.deleteOne({
       userId,
       date: today,
@@ -115,8 +120,8 @@ export class InsightsService {
     facts: FactsBundle;
     trailingAverageByCategory: Map<string, number>;
   }> {
-    const month = this.currentMonthString();
-    const trailingMonths = this.monthsBefore(month, 3);
+    const month = currentMonthString();
+    const trailingMonths = monthsBefore(month, 3);
 
     const [
       summary,
@@ -375,26 +380,5 @@ export class InsightsService {
       style: 'currency',
       currency: 'BRL',
     }).format(value);
-  }
-
-  private todayString(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  private currentMonthString(): string {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }
-
-  private monthsBefore(month: string, n: number): string[] {
-    const [year, monthNum] = month.split('-').map(Number);
-    const months: string[] = [];
-    for (let i = 1; i <= n; i++) {
-      const d = new Date(year, monthNum - 1 - i, 1);
-      months.push(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-      );
-    }
-    return months;
   }
 }

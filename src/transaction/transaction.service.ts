@@ -2,24 +2,32 @@ import {
   Injectable,
   HttpException,
   HttpStatus,
+  BadRequestException,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Transaction } from './entities/transaction.entity';
-import { MongoRepository, Repository } from 'typeorm';
+import { DataSource, MongoRepository, Repository } from 'typeorm';
 import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
 import { BudgetService } from '../budget/budget.service';
 import { BankAccount } from 'src/bank-account/entities/bank-account.entity';
 import { Subcategory } from 'src/subcategory/entities/subcategory.entity';
 import { Category } from 'src/category/entities/category.entity';
-import { ObjectId } from 'mongodb';
+import { ClientSession, MongoClient, ObjectId } from 'mongodb';
 import { toObjectId } from '../common/mongo.util';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 import { paginate } from '../common/pagination/paginate.util';
+import {
+  currentMonthString,
+  dayToRange,
+  lastNMonths,
+  monthKeyOf,
+  monthToRange,
+} from '../common/date/month-range.util';
 
 const UNCATEGORIZED_LABEL = 'Sem categoria';
 
@@ -41,9 +49,69 @@ export class TransactionService {
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
     private readonly budgetService: BudgetService,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
-  async create(createTransactionDto: CreateTransactionDto) {
+  /**
+   * Runs `work` inside a native MongoDB driver session/transaction. TypeORM's
+   * query runner does NOT implement real transactions for its MongoDB driver
+   * (startTransaction/commitTransaction/rollbackTransaction are no-ops there),
+   * so this goes around it exactly like GroupExpenseService.create() does:
+   * pull the native MongoClient off the driver, open a session, and drive
+   * writes through `dataSource.mongoManager`, which forwards `{ session }`
+   * straight to the native collection calls. `.save()` does not accept a
+   * session and must not be used inside `work`.
+   */
+  private async withSession(
+    work: (session: ClientSession) => Promise<void>,
+  ): Promise<void> {
+    // TypeORM ships its own duplicated mongodb typings that structurally
+    // conflict with the real `mongodb` package's ClientSession type — the
+    // `as any` here is a typing workaround, not a runtime risk (see
+    // GroupExpenseService.create for precedent).
+    const client = (this.dataSource.driver as any).queryRunner
+      .databaseConnection as MongoClient;
+    const session = client.startSession();
+    try {
+      await session.withTransaction(() => work(session));
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  /**
+   * The signed balance effect a transaction has on its linked account: zero
+   * while unpaid, +paid_amount for income, -paid_amount for expense. Transfers
+   * are not expressed through this — their movement is unconditional at
+   * creation and reconciled separately (see removeTransfer).
+   */
+  private balanceEffect(
+    tx: Pick<Transaction, 'type' | 'payment_date' | 'paid_amount'>,
+  ): number {
+    if (!tx.payment_date) return 0;
+    const amount = Number(tx.paid_amount || 0);
+    const type = (tx.type || '').toLowerCase();
+    if (type === 'income') return amount;
+    if (type === 'expense') return -amount;
+    return 0;
+  }
+
+  private async applyBalanceDelta(
+    accountId: ObjectId,
+    delta: number,
+    session: ClientSession,
+  ): Promise<void> {
+    if (delta === 0) return;
+    await this.dataSource.mongoManager.updateOne(
+      BankAccount,
+      { _id: accountId },
+      { $inc: { balance: delta } },
+      { session } as any,
+    );
+  }
+
+  async create(createTransactionDto: CreateTransactionDto, userId: number) {
     const account = await this.bankAccountRepository.findOne({
       where: { _id: toObjectId(createTransactionDto.account_id) } as any,
     });
@@ -69,7 +137,11 @@ export class TransactionService {
     }
 
     const t = (createTransactionDto.type || '').toLowerCase();
-    const userId = (createTransactionDto as any).user_id || null;
+    const isPlanned = hasDueDate(createTransactionDto.due_date);
+    const subcategoryId = createTransactionDto.subcategory_id
+      ? toObjectId(createTransactionDto.subcategory_id)
+      : undefined;
+    const now = new Date();
 
     if (t === 'transfer') {
       const targetId = createTransactionDto.target_account_id;
@@ -90,71 +162,93 @@ export class TransactionService {
         );
       }
 
-      // if (Number(account.balance) < amount) {
-      //   throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
-      // }
+      const transferGroupId = new ObjectId();
+      const sourceId = new ObjectId();
+      const mirrorId = new ObjectId();
 
-      const isPlanned = hasDueDate(createTransactionDto.due_date);
-
-      const sourceTx = await this.transactionRepository.save({
+      const sourceDoc = {
         ...createTransactionDto,
+        _id: sourceId,
         account_id: toObjectId(createTransactionDto.account_id),
         target_account_id: toObjectId(targetId),
+        subcategory_id: subcategoryId,
         is_planned: isPlanned,
+        transfer_group_id: transferGroupId,
+        is_transfer_mirror: false,
+        user_id: userId,
         created_by: userId,
         updated_by: userId,
-      } as any);
-
-      await this.transactionRepository.save({
+        created_at: now,
+        updated_at: now,
+      };
+      const mirrorDoc = {
         ...createTransactionDto,
+        _id: mirrorId,
         account_id: toObjectId(targetId),
         target_account_id: toObjectId(createTransactionDto.account_id),
+        subcategory_id: subcategoryId,
         type: 'transfer',
         is_planned: isPlanned,
+        transfer_group_id: transferGroupId,
+        is_transfer_mirror: true,
+        user_id: userId,
         created_by: userId,
         updated_by: userId,
-      } as any);
+        created_at: now,
+        updated_at: now,
+      };
 
-      account.balance = Number(account.balance) - amount;
-      targetAccount.balance = Number(targetAccount.balance) + amount;
-      await this.bankAccountRepository.save(account);
-      await this.bankAccountRepository.save(targetAccount);
+      await this.withSession(async (session) => {
+        await this.dataSource.mongoManager.insertMany(
+          Transaction,
+          [sourceDoc, mirrorDoc] as any,
+          { session } as any,
+        );
+        await this.applyBalanceDelta(account.id, -amount, session);
+        await this.applyBalanceDelta(targetAccount.id, amount, session);
+      });
 
-      return sourceTx as TransactionResponseDto;
+      const saved = await this.transactionRepository.findOne({
+        where: { _id: sourceId } as any,
+      });
+      return saved as unknown as TransactionResponseDto;
     }
 
-    const isPlanned = hasDueDate(createTransactionDto.due_date);
-
+    const newId = new ObjectId();
     const payload = {
-      ...(createTransactionDto as any),
+      ...createTransactionDto,
+      _id: newId,
       account_id: toObjectId(createTransactionDto.account_id),
-      subcategory_id: createTransactionDto.subcategory_id
-        ? toObjectId(createTransactionDto.subcategory_id)
-        : undefined,
+      subcategory_id: subcategoryId,
       target_account_id: createTransactionDto.target_account_id
         ? toObjectId(createTransactionDto.target_account_id)
         : undefined,
       is_planned: isPlanned,
+      user_id: userId,
       created_by: userId,
       updated_by: userId,
-    } as any;
+      created_at: now,
+      updated_at: now,
+    };
 
-    const saved = await this.transactionRepository.save(payload as any);
+    const effect = this.balanceEffect(payload as any);
 
-    // if (t === 'income') {
-    //   account.balance = Number(account.balance) + amount;
-    // } else if (t === 'expense') {
-    //   account.balance = Number(account.balance) - amount;
-    //   if (account.balance < 0) {
-    //     throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
-    //   }
-    // }
+    await this.withSession(async (session) => {
+      await this.dataSource.mongoManager.insertOne(
+        Transaction,
+        payload as any,
+        { session } as any,
+      );
+      await this.applyBalanceDelta(account.id, effect, session);
+    });
 
-    // await this.bankAccountRepository.save(account);
+    const saved = await this.transactionRepository.findOne({
+      where: { _id: newId } as any,
+    });
 
     await this.syncBudgetForTransaction(saved as Transaction);
 
-    return saved as TransactionResponseDto;
+    return saved as unknown as TransactionResponseDto;
   }
 
   async findAll(
@@ -163,14 +257,26 @@ export class TransactionService {
     dateRange?: { from?: string; to?: string; category_id?: string },
   ) {
     const baseWhere: Record<string, any> = { user_id: userId };
-    // due_date is always stored as a plain "YYYY-MM-DD" string (see create/update DTOs,
-    // no Date transform applied), so a string $gte/$lte range is reliable here — unlike
-    // payment_date, which is sometimes a real Date (see getForecastedExpenses comment).
+    // An unplanned transaction (see hasDueDate()) has no due_date at all, so a range
+    // match on due_date alone silently drops every unplanned-but-paid transaction from
+    // a date-filtered list. Matching due_date OR payment_date covers both: planned
+    // transactions by when they're due, unplanned ones by when they were actually paid.
+    // due_date stays a string range (it's always stored as plain "YYYY-MM-DD"); payment_date
+    // is a real Date, so its range comes from dayToRange's UTC day boundaries instead.
     if (dateRange?.from || dateRange?.to) {
-      baseWhere.due_date = {
+      const dueDateRange: Record<string, string> = {
         ...(dateRange.from && { $gte: dateRange.from }),
         ...(dateRange.to && { $lte: dateRange.to }),
       };
+      const paymentDateRange: Record<string, Date> = {
+        ...(dateRange.from && { $gte: dayToRange(dateRange.from).startDate }),
+        ...(dateRange.to && { $lt: dayToRange(dateRange.to).endDate }),
+      };
+
+      baseWhere.$or = [
+        { due_date: dueDateRange },
+        { payment_date: paymentDateRange },
+      ];
     }
 
     // Only resolve category_id → subcategory_id list when the caller hasn't already
@@ -206,17 +312,14 @@ export class TransactionService {
       preQueryStages: [
         {
           $set: {
+            // $ne against a genuinely absent field evaluates to true in this MongoDB
+            // version (missing is NOT treated as equal to null here), so the previous
+            // { $ne: [$due_date, null] } form misclassified any document that never
+            // had due_date set (e.g. a raw insertOne where an undefined value was
+            // stripped) as planned. $ifNull + $strLenCP treats missing, null, and ''
+            // uniformly as "no due date" — matching hasDueDate()'s own JS logic.
             is_planned: {
-              $cond: [
-                {
-                  $and: [
-                    { $ne: ['$due_date', null] },
-                    { $ne: ['$due_date', ''] },
-                  ],
-                },
-                true,
-                false,
-              ],
+              $gt: [{ $strLenCP: { $ifNull: ['$due_date', ''] } }, 0],
             },
           },
         },
@@ -224,8 +327,14 @@ export class TransactionService {
     });
   }
 
-  findOne(id: ObjectId) {
-    return this.transactionRepository.findOne({ where: { _id: id } as any });
+  async findOne(id: ObjectId, userId: number) {
+    const transaction = await this.transactionRepository.findOne({
+      where: { _id: id, user_id: userId } as any,
+    });
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+    return transaction;
   }
 
   async getSummary(
@@ -250,7 +359,7 @@ export class TransactionService {
         ...(params.to && { $lte: params.to }),
       };
     } else if (params?.month) {
-      const { startDate, endDate } = this.monthToRange(params.month);
+      const { startDate, endDate } = monthToRange(params.month);
       match.payment_date = { $gte: startDate, $lt: endDate };
     }
 
@@ -303,8 +412,8 @@ export class TransactionService {
       transactionCount: number;
     }[];
   }> {
-    const targetMonth = month || this.currentMonthString();
-    const { startDate, endDate } = this.monthToRange(targetMonth);
+    const targetMonth = month || currentMonthString();
+    const { startDate, endDate } = monthToRange(targetMonth);
 
     const results = (await this.transactionRepository
       .aggregate([
@@ -353,7 +462,7 @@ export class TransactionService {
       transactionCount: number;
     }[];
   }> {
-    const targetMonth = month || this.currentMonthString();
+    const targetMonth = month || currentMonthString();
 
     // due_date is populated straight from the create DTO's raw string (unlike
     // payment_date/created_at, which are always real Date objects set in code), so it's
@@ -374,7 +483,7 @@ export class TransactionService {
     >();
     for (const t of pending) {
       if (!t.due_date) continue;
-      if (new Date(t.due_date).toISOString().slice(0, 7) !== targetMonth) {
+      if (monthKeyOf(new Date(t.due_date)) !== targetMonth) {
         continue;
       }
       const key = t.subcategory_id ? t.subcategory_id.toString() : '';
@@ -483,8 +592,8 @@ export class TransactionService {
     userId: number,
     months = 6,
   ): Promise<Array<{ month: string; income: number; expenses: number }>> {
-    const monthKeys = this.lastNMonths(months);
-    const { startDate } = this.monthToRange(monthKeys[0]);
+    const monthKeys = lastNMonths(months);
+    const { startDate } = monthToRange(monthKeys[0]);
     const now = new Date();
 
     const results = (await this.transactionRepository
@@ -563,24 +672,21 @@ export class TransactionService {
     planned: { total: number; count: number };
     unplanned: { total: number; count: number };
   }> {
-    const targetMonth = month || this.currentMonthString();
-    const { startDate, endDate } = this.monthToRange(targetMonth);
+    const targetMonth = month || currentMonthString();
+    const { startDate, endDate } = monthToRange(targetMonth);
 
     const results = (await this.transactionRepository
       .aggregate([
         {
           $set: {
+            // $ne against a genuinely absent field evaluates to true in this MongoDB
+            // version (missing is NOT treated as equal to null here), so the previous
+            // { $ne: [$due_date, null] } form misclassified any document that never
+            // had due_date set (e.g. a raw insertOne where an undefined value was
+            // stripped) as planned. $ifNull + $strLenCP treats missing, null, and ''
+            // uniformly as "no due date" — matching hasDueDate()'s own JS logic.
             is_planned: {
-              $cond: [
-                {
-                  $and: [
-                    { $ne: ['$due_date', null] },
-                    { $ne: ['$due_date', ''] },
-                  ],
-                },
-                true,
-                false,
-              ],
+              $gt: [{ $strLenCP: { $ifNull: ['$due_date', ''] } }, 0],
             },
           },
         },
@@ -635,37 +741,15 @@ export class TransactionService {
     return subcategories.map((s) => s.id);
   }
 
-  private currentMonthString(): string {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }
-
-  private monthToRange(month: string): { startDate: Date; endDate: Date } {
-    const [year, monthNum] = month.split('-');
-    const startDate = new Date(`${year}-${monthNum}-01T00:00:00Z`);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1);
-    return { startDate, endDate };
-  }
-
-  private lastNMonths(n: number): string[] {
-    const months: string[] = [];
-    const now = new Date();
-    for (let i = n - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      months.push(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-      );
-    }
-    return months;
-  }
-
   /**
    * Recalculate the budget (if any) that a transaction snapshot counts against, so
    * that BudgetService.spent stays in sync whenever a paid expense is created, edited,
-   * paid, or removed. Uses UTC month bucketing to match BudgetService.calculateSpent's
-   * date-range construction. Never throws — a sync failure must not fail the
-   * transaction write that triggered it.
+   * paid, or removed. Buckets by month in APP_TIMEZONE to match the range
+   * BudgetService.calculateSpent builds from the same helper. Never throws — a sync
+   * failure must not fail the transaction write that triggered it. Deliberately runs
+   * outside the write's session: it reads other collections and calls webhooks, and
+   * failing a user's edit because a webhook timed out would be worse than a stale
+   * budget total.
    */
   private async syncBudgetForTransaction(
     transaction: Pick<
@@ -693,10 +777,7 @@ export class TransactionService {
       });
       if (!subcategory) return;
 
-      const paymentDate = new Date(transaction.payment_date);
-      const month = `${paymentDate.getUTCFullYear()}-${String(
-        paymentDate.getUTCMonth() + 1,
-      ).padStart(2, '0')}`;
+      const month = monthKeyOf(new Date(transaction.payment_date));
 
       const budget = await this.budgetService.findByCategoryAndMonth(
         transaction.user_id,
@@ -714,14 +795,27 @@ export class TransactionService {
   async update(
     id: ObjectId,
     updateTransactionDto: UpdateTransactionDto,
-    userId?: number,
+    userId: number,
   ) {
     const transaction = await this.transactionRepository.findOne({
-      where: { _id: id } as any,
+      where: { _id: id, user_id: userId } as any,
     });
     if (!transaction) {
-      throw new Error('Transaction not found');
+      throw new NotFoundException('Transaction not found');
     }
+
+    const isTransfer = (transaction.type || '').toLowerCase() === 'transfer';
+    if (
+      isTransfer &&
+      (updateTransactionDto.amount !== undefined ||
+        updateTransactionDto.account_id !== undefined ||
+        updateTransactionDto.target_account_id !== undefined)
+    ) {
+      throw new BadRequestException(
+        "Editing a transfer's amount or accounts is not supported; delete and recreate it instead.",
+      );
+    }
+
     const before = { ...transaction };
     const originalIsPlanned = transaction.is_planned;
     Object.assign(transaction, updateTransactionDto);
@@ -729,22 +823,66 @@ export class TransactionService {
     // ObjectId-reference fields arrive as plain strings from the DTO (same as
     // create()) — assigning them raw would silently store a string instead of an
     // ObjectId, which breaks every $in/equality query matched against these fields
-    // (e.g. BudgetService.calculateSpent).
-    if (updateTransactionDto.subcategory_id !== undefined) {
+    // (e.g. BudgetService.calculateSpent). A field cleared to "" is normalized to
+    // undefined by the DTO's @Transform and is handled below by the $set sanitizer.
+    if (updateTransactionDto.subcategory_id) {
       transaction.subcategory_id = toObjectId(
         updateTransactionDto.subcategory_id,
       );
     }
-    if (updateTransactionDto.account_id !== undefined) {
+    if (!isTransfer && updateTransactionDto.account_id !== undefined) {
       transaction.account_id = toObjectId(updateTransactionDto.account_id);
     }
-    if (updateTransactionDto.target_account_id !== undefined) {
+    if (!isTransfer && updateTransactionDto.target_account_id) {
       transaction.target_account_id = toObjectId(
         updateTransactionDto.target_account_id,
       );
     }
-    if (userId) transaction.updated_by = userId;
-    const saved = await this.transactionRepository.save(transaction);
+    transaction.updated_by = userId;
+    transaction.updated_at = new Date();
+
+    const beforeEffect = this.balanceEffect(before);
+    const afterEffect = isTransfer ? 0 : this.balanceEffect(transaction);
+
+    // Raw $set bypasses TypeORM's own undefined-handling, so any field explicitly
+    // cleared by the caller (e.g. due_date: "" → undefined via the DTO transform)
+    // is normalized to null here — sending `undefined` through the native driver
+    // is ambiguous (BSON has a deprecated "undefined" type) and must be avoided.
+    const rest = {
+      ...(transaction as unknown as Record<string, unknown>),
+    };
+    delete rest.id;
+    const setFields: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rest)) {
+      setFields[key] = value === undefined ? null : value;
+    }
+
+    await this.withSession(async (session) => {
+      await this.dataSource.mongoManager.updateOne(
+        Transaction,
+        { _id: id },
+        { $set: setFields },
+        { session } as any,
+      );
+      if (before.account_id) {
+        await this.applyBalanceDelta(
+          toObjectId(before.account_id.toString()),
+          -beforeEffect,
+          session,
+        );
+      }
+      if (afterEffect !== 0 && transaction.account_id) {
+        await this.applyBalanceDelta(
+          toObjectId(transaction.account_id.toString()),
+          afterEffect,
+          session,
+        );
+      }
+    });
+
+    const saved = await this.transactionRepository.findOne({
+      where: { _id: id } as any,
+    });
 
     // Sync both the old and new budget in case the edit moved the transaction to a
     // different subcategory/category or payment month.
@@ -754,26 +892,108 @@ export class TransactionService {
     return saved;
   }
 
-  async remove(id: ObjectId) {
-    try {
-      const transaction = await this.transactionRepository.findOne({
-        where: { _id: id } as any,
-      });
-      const result = await this.transactionRepository.remove(transaction);
-      await this.syncBudgetForTransaction(transaction);
-      return result;
-    } catch {
-      return 'Não pode ser excluido ... pq eu nao sei mesmo...';
+  async remove(id: ObjectId, userId: number) {
+    const transaction = await this.transactionRepository.findOne({
+      where: { _id: id, user_id: userId } as any,
+    });
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
     }
+
+    const isTransfer = (transaction.type || '').toLowerCase() === 'transfer';
+
+    if (isTransfer) {
+      await this.removeTransfer(transaction, userId);
+    } else {
+      const effect = this.balanceEffect(transaction);
+      await this.withSession(async (session) => {
+        await this.dataSource.mongoManager.deleteOne(Transaction, { _id: id }, {
+          session,
+        } as any);
+        if (transaction.account_id) {
+          await this.applyBalanceDelta(
+            toObjectId(transaction.account_id.toString()),
+            -effect,
+            session,
+          );
+        }
+      });
+    }
+
+    await this.syncBudgetForTransaction(transaction);
+    return { deleted: true };
+  }
+
+  /**
+   * A transfer's balance movement is applied once at creation (source debited,
+   * target credited) and described by two documents, not two independent
+   * effects — see design.md. The authoritative (non-mirror) leg's own
+   * account_id/target_account_id encode that movement's direction; the mirror
+   * leg carries none of its own. Legacy transfers predate `is_transfer_mirror`
+   * and `transfer_group_id`, so every leg of one looks "authoritative" in
+   * isolation — reversing with whichever leg is being deleted is the best
+   * available answer when no sibling can be found, rather than failing the
+   * request or guessing at a pairing.
+   */
+  private async removeTransfer(
+    transaction: Transaction,
+    userId: number,
+  ): Promise<void> {
+    let sibling: Transaction | null = null;
+    if (transaction.transfer_group_id) {
+      sibling = await this.transactionRepository.findOne({
+        where: {
+          transfer_group_id: toObjectId(
+            transaction.transfer_group_id.toString(),
+          ),
+          _id: { $ne: transaction.id },
+          user_id: userId,
+        } as any,
+      });
+    }
+
+    const authoritative = !transaction.is_transfer_mirror
+      ? transaction
+      : sibling ?? transaction;
+
+    await this.withSession(async (session) => {
+      await this.dataSource.mongoManager.deleteOne(
+        Transaction,
+        { _id: transaction.id },
+        { session } as any,
+      );
+      if (sibling) {
+        await this.dataSource.mongoManager.deleteOne(
+          Transaction,
+          { _id: sibling.id },
+          { session } as any,
+        );
+      }
+      const amount = Number(authoritative.amount || 0);
+      if (authoritative.account_id) {
+        await this.applyBalanceDelta(
+          toObjectId(authoritative.account_id.toString()),
+          -amount,
+          session,
+        );
+      }
+      if (authoritative.target_account_id) {
+        await this.applyBalanceDelta(
+          toObjectId(authoritative.target_account_id.toString()),
+          amount,
+          session,
+        );
+      }
+    });
   }
 
   async payment(
     id: ObjectId,
     paymentDto: PaymentTransactionDto,
-    userId?: number,
+    userId: number,
   ) {
     const transaction = await this.transactionRepository.findOne({
-      where: { _id: id } as any,
+      where: { _id: id, user_id: userId } as any,
     });
     if (!transaction) {
       throw new NotFoundException('Transaction not found');
@@ -785,28 +1005,40 @@ export class TransactionService {
       throw new ConflictException('Transaction is already paid');
     }
 
-    const accountId = ObjectId.createFromHexString(
-      transaction.account_id.toString(),
-    );
-    const account = await this.bankAccountRepository.findOne({
-      where: { _id: accountId } as any,
+    const paymentDate = paymentDto.payment_date || new Date();
+    const paidAmount = paymentDto.paid_amount;
+    const effect = this.balanceEffect({
+      type: transaction.type,
+      payment_date: paymentDate,
+      paid_amount: paidAmount,
     });
-    if (account) {
-      const amount = Number(paymentDto.paid_amount);
-      const type = (transaction.type || '').toLowerCase();
-      if (type === 'income') {
-        account.balance = Number(account.balance) + amount;
-      } else if (type === 'expense') {
-        account.balance = Number(account.balance) - amount;
+
+    await this.withSession(async (session) => {
+      await this.dataSource.mongoManager.updateOne(
+        Transaction,
+        { _id: id },
+        {
+          $set: {
+            payment_date: paymentDate,
+            paid_amount: paidAmount,
+            updated_by: userId,
+            updated_at: new Date(),
+          },
+        },
+        { session } as any,
+      );
+      if (transaction.account_id) {
+        await this.applyBalanceDelta(
+          toObjectId(transaction.account_id.toString()),
+          effect,
+          session,
+        );
       }
-      await this.bankAccountRepository.save(account);
-    }
+    });
 
-    transaction.payment_date = paymentDto.payment_date || new Date();
-    transaction.paid_amount = paymentDto.paid_amount;
-    if (userId) transaction.updated_by = userId;
-
-    const saved = await this.transactionRepository.save(transaction);
+    const saved = await this.transactionRepository.findOne({
+      where: { _id: id } as any,
+    });
     await this.syncBudgetForTransaction(saved);
     return saved;
   }

@@ -1,8 +1,8 @@
-import { Type } from 'class-transformer';
 import { IsDate, IsNumber, IsOptional } from 'class-validator';
+import { ToZonedDate } from '../../common/date/zoned-date.transform';
 
 export class PaymentTransactionDto {
-  @Type(() => Date)
+  @ToZonedDate()
   @IsDate()
   @IsOptional()
   payment_date?: Date;

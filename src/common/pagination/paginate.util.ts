@@ -115,7 +115,11 @@ export async function paginate<T extends ObjectLiteral>(
     pipeline.push({ $skip: (page - 1) * pageSize });
     pipeline.push({ $limit: pageSize });
 
-    const data = await repository.aggregate(pipeline).toArray();
+    // aggregateEntity() (not aggregate()) so items match the shape findAndCount()
+    // returns below: an entity with `id`, not a raw document with `_id`. It only
+    // surfaces fields declared as @Column on the entity — a preQueryStages field
+    // that isn't a real column will be computed but silently dropped here.
+    const data = await repository.aggregateEntity(pipeline).toArray();
 
     return {
       data: data as T[],
