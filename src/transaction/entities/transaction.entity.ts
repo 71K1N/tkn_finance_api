@@ -45,6 +45,9 @@ export class Transaction {
   @Column()
   type: string;
 
+  @Column({ nullable: true })
+  is_planned?: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

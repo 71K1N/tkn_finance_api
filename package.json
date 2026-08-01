@@ -19,7 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "ts-node src/database/seed.ts",
-    "recalculate-budgets": "ts-node src/database/recalculate-budgets.ts"
+    "recalculate-budgets": "ts-node src/database/recalculate-budgets.ts",
+    "migrate:populate-is-planned": "ts-node src/migrations/run-populate-is-planned.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

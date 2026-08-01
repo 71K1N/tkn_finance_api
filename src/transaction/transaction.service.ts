@@ -88,10 +88,13 @@ export class TransactionService {
       //   throw new HttpException('Insufficient funds', HttpStatus.CONFLICT);
       // }
 
+      const isPlanned = !!createTransactionDto.due_date && createTransactionDto.due_date !== '';
+
       const sourceTx = await this.transactionRepository.save({
         ...createTransactionDto,
         account_id: toObjectId(createTransactionDto.account_id),
         target_account_id: toObjectId(targetId),
+        is_planned: isPlanned,
         created_by: userId,
         updated_by: userId,
       } as any);
@@ -101,6 +104,7 @@ export class TransactionService {
         account_id: toObjectId(targetId),
         target_account_id: toObjectId(createTransactionDto.account_id),
         type: 'transfer',
+        is_planned: isPlanned,
         created_by: userId,
         updated_by: userId,
       } as any);
@@ -113,6 +117,8 @@ export class TransactionService {
       return sourceTx as TransactionResponseDto;
     }
 
+    const isPlanned = !!createTransactionDto.due_date && createTransactionDto.due_date !== '';
+
     const payload = {
       ...(createTransactionDto as any),
       account_id: toObjectId(createTransactionDto.account_id),
@@ -122,6 +128,7 @@ export class TransactionService {
       target_account_id: createTransactionDto.target_account_id
         ? toObjectId(createTransactionDto.target_account_id)
         : undefined,
+      is_planned: isPlanned,
       created_by: userId,
       updated_by: userId,
     } as any;
@@ -176,6 +183,7 @@ export class TransactionService {
         'type',
         'account_id',
         'subcategory_id',
+        'is_planned',
       ],
       sortableFields: [
         'name',
@@ -183,11 +191,30 @@ export class TransactionService {
         'due_date',
         'payment_date',
         'type',
+        'is_planned',
         'created_at',
         'updated_at',
       ],
       defaultSort: { key: 'created_at', direction: 'desc' },
       baseWhere,
+      preQueryStages: [
+        {
+          $set: {
+            is_planned: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$due_date', null] },
+                    { $ne: ['$due_date', ''] },
+                  ],
+                },
+                true,
+                false,
+              ],
+            },
+          },
+        },
+      ],
     });
   }
 
@@ -522,6 +549,69 @@ export class TransactionService {
     return trend.map((t, i) => ({ month: t.month, balance: balances[i] }));
   }
 
+  async getPlannedVsUnplanned(userId: number, month?: string): Promise<{
+    month: string;
+    planned: { total: number; count: number };
+    unplanned: { total: number; count: number };
+  }> {
+    const targetMonth = month || this.currentMonthString();
+    const { startDate, endDate } = this.monthToRange(targetMonth);
+
+    const results = (await this.transactionRepository
+      .aggregate([
+        {
+          $set: {
+            is_planned: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$due_date', null] },
+                    { $ne: ['$due_date', ''] },
+                  ],
+                },
+                true,
+                false,
+              ],
+            },
+          },
+        },
+        {
+          $match: {
+            user_id: userId,
+            type: 'EXPENSE',
+            payment_date: { $gte: startDate, $lt: endDate },
+          },
+        },
+        {
+          $group: {
+            _id: '$is_planned',
+            total: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray()) as unknown as {
+      _id: boolean;
+      total: number;
+      count: number;
+    }[];
+
+    const planned = results.find((r) => r._id === true) ?? {
+      total: 0,
+      count: 0,
+    };
+    const unplanned = results.find((r) => r._id === false) ?? {
+      total: 0,
+      count: 0,
+    };
+
+    return {
+      month: targetMonth,
+      planned: { total: planned.total, count: planned.count },
+      unplanned: { total: unplanned.total, count: unplanned.count },
+    };
+  }
+
   private async getCurrentTotalBalance(): Promise<number> {
     const accounts = await this.bankAccountRepository.find();
     return accounts.reduce((sum, a) => sum + Number(a.balance), 0);
@@ -624,7 +714,9 @@ export class TransactionService {
       throw new Error('Transaction not found');
     }
     const before = { ...transaction };
+    const originalIsPlanned = transaction.is_planned;
     Object.assign(transaction, updateTransactionDto);
+    transaction.is_planned = originalIsPlanned;
     // ObjectId-reference fields arrive as plain strings from the DTO (same as
     // create()) — assigning them raw would silently store a string instead of an
     // ObjectId, which breaks every $in/equality query matched against these fields

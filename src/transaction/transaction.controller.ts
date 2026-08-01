@@ -99,6 +99,14 @@ export class TransactionController {
     return this.transactionService.getForecastedExpenses(userId, month);
   }
 
+  @Get('analysis/planned-vs-unplanned')
+  getPlannedVsUnplanned(
+    @User() userId: number,
+    @Query('month') month?: string,
+  ) {
+    return this.transactionService.getPlannedVsUnplanned(userId, month);
+  }
+
   @Get(':id')
   findOne(@Param('id', MongoIdPipe) id: ObjectId) {
     return this.transactionService.findOne(id);
