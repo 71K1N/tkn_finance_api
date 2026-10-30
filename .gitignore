@@ -58,3 +58,6 @@ src/database/tknfinance.sqlite
 specs/*
 CLAUDE.md
 openspec/*
+.github/skills/*
+.github/prompts/*
+.claude/*

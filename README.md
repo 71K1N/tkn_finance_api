@@ -71,3 +71,21 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](LICENSE).
+
+## Authentication
+
+Sign-in uses Google ID tokens. `POST /auth/google` returns a short-lived access JWT (send as `Authorization: Bearer <jwt>`) and sets a rotating refresh cookie used by `POST /auth/refresh`; `POST /auth/logout` revokes the session. Every other route requires a valid access token. User id `1` is reserved for the owner of the pre-existing data (`HEIR_EMAIL`); new users start at id `2`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET` | – (required) | HS256 signing secret for access tokens |
+| `GOOGLE_CLIENT_ID` | – (required) | Expected audience of Google ID tokens |
+| `JWT_ACCESS_TTL` | `15m` | Access token lifetime |
+| `REFRESH_TTL` | `7d` | Sliding refresh lifetime (inactivity limit) |
+| `REFRESH_ABSOLUTE_TTL` | `30d` | Maximum session age |
+| `SIGNUP_MODE` | `allowlist` | `allowlist` or `open` |
+| `ALLOWED_EMAILS` | – | Comma-separated e-mails that may sign up in `allowlist` mode |
+| `HEIR_EMAIL` | `d71k1n@gmail.com` | E-mail linked to the pre-provisioned user 1 |
+| `CORS_ORIGINS` | – | Comma-separated origins allowed with credentials |
+| `COOKIE_PATH` | `/api/auth` | Browser-visible path of the refresh cookie |
+| `COOKIE_SECURE` | `true` in production | Sets the `Secure` cookie flag |

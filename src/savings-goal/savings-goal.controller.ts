@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,14 +18,12 @@ import {
   SavingsGoalProgressDto,
 } from './dto/savings-goal-response.dto';
 import { WishItemResponseDto } from '../wish-item/dto/wish-item-response.dto';
-import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { ObjectId } from 'mongodb';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @Controller('savings-goal')
-@UseGuards(AuthGuard)
 export class SavingsGoalController {
   constructor(private readonly savingsGoalService: SavingsGoalService) {}
 

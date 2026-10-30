@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ObjectId } from 'mongodb';
 import { TransactionController } from './transaction.controller';
 import { TransactionService } from './transaction.service';
+import { TransactionParserService } from './transaction-parser.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 
@@ -31,7 +32,10 @@ describe('TransactionController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TransactionController],
-      providers: [{ provide: TransactionService, useValue: service }],
+      providers: [
+        { provide: TransactionService, useValue: service },
+        { provide: TransactionParserService, useValue: { parse: jest.fn() } },
+      ],
     }).compile();
 
     controller = module.get<TransactionController>(TransactionController);

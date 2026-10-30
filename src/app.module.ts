@@ -26,6 +26,11 @@ import { GroupExpense } from './expense-group/entities/group-expense.entity';
 import { ExpenseSplit } from './expense-group/entities/expense-split.entity';
 import { ExpenseSettlement } from './expense-group/entities/expense-settlement.entity';
 import { InsightSnapshot } from './insights/entities/insight-snapshot.entity';
+import { User } from './user/entities/user.entity';
+import { Counter } from './user/entities/counter.entity';
+import { RefreshToken } from './auth/entities/refresh-token.entity';
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -48,6 +53,9 @@ import { InsightSnapshot } from './insights/entities/insight-snapshot.entity';
         ExpenseSplit,
         ExpenseSettlement,
         InsightSnapshot,
+        User,
+        Counter,
+        RefreshToken,
       ],
       synchronize: true,
       logging: true,
@@ -61,6 +69,8 @@ import { InsightSnapshot } from './insights/entities/insight-snapshot.entity';
     WebhookModule,
     ExpenseGroupModule,
     InsightsModule,
+    UserModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

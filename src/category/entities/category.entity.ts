@@ -24,6 +24,10 @@ export class Category {
   @UpdateDateColumn()
   updated_at: Date;
 
+  // Owner. Null on a category/subcategory means the shared system catalogue (read-only).
+  @Column({ nullable: true })
+  user_id: number | null;
+
   @Column({ nullable: true })
   created_by: number | null;
 

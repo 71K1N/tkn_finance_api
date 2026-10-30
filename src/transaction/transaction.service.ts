@@ -22,14 +22,40 @@ import { toObjectId } from '../common/mongo.util';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 import { paginate } from '../common/pagination/paginate.util';
 import {
+  APP_TIMEZONE,
   currentMonthString,
   dayToRange,
   lastNMonths,
   monthKeyOf,
   monthToRange,
+  shiftMonth,
 } from '../common/date/month-range.util';
+import { SummaryStatus } from './summary-status.enum';
 
 const UNCATEGORIZED_LABEL = 'Sem categoria';
+
+/**
+ * What a transaction is worth in any figure that reports money already moved:
+ * the amount it was actually paid for, falling back to the planned amount when
+ * no paid amount was recorded.
+ *
+ * `$ifNull: ['$paid_amount', '$amount']` is NOT enough here. It recovers absent
+ * and null, but not a literal 0 — and paid_amount is declared `default: 0` on the
+ * entity while CreateTransactionDto leaves it optional even when payment_date is
+ * set, so a transaction can be created already-paid with paid_amount absent, null,
+ * or 0. `$gt: 0` treats all three uniformly as "nothing was recorded". Amounts are
+ * @IsPositive at creation, so this can never reject a legitimately recorded value.
+ *
+ * Shared by getSummary's PAID branch and getMonthlyTrend so the dashboard's cards
+ * and its charts cannot value the same payment differently.
+ */
+const SETTLED_AMOUNT = {
+  $cond: [{ $gt: ['$paid_amount', 0] }, '$paid_amount', '$amount'],
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A full leap year, so the front can ask for Jan 1 – Dec 31 of any year.
+const MAX_DAILY_SUMMARY_DAYS = 366;
 
 // due_date is typed as Date on the DTO but arrives as a plain string at runtime
 // (validated via @IsDateString()), so this accepts either representation.
@@ -113,7 +139,10 @@ export class TransactionService {
 
   async create(createTransactionDto: CreateTransactionDto, userId: number) {
     const account = await this.bankAccountRepository.findOne({
-      where: { _id: toObjectId(createTransactionDto.account_id) } as any,
+      where: {
+        _id: toObjectId(createTransactionDto.account_id),
+        user_id: userId,
+      } as any,
     });
     if (!account) {
       throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
@@ -131,7 +160,8 @@ export class TransactionService {
       const subcat = await this.subcategoryRepository.findOne({
         where: { _id: toObjectId(createTransactionDto.subcategory_id) } as any,
       });
-      if (!subcat) {
+      // Own subcategories and the shared system catalogue (user_id null) are usable.
+      if (!subcat || (subcat.user_id != null && subcat.user_id !== userId)) {
         throw new HttpException('Subcategory not found', HttpStatus.NOT_FOUND);
       }
     }
@@ -153,7 +183,7 @@ export class TransactionService {
       }
 
       const targetAccount = await this.bankAccountRepository.findOne({
-        where: { _id: toObjectId(targetId) } as any,
+        where: { _id: toObjectId(targetId), user_id: userId } as any,
       });
       if (!targetAccount) {
         throw new HttpException(
@@ -347,20 +377,42 @@ export class TransactionService {
       account_id?: string;
       category_id?: string;
       subcategory_id?: string;
+      status?: SummaryStatus;
     },
   ) {
+    const status = params?.status ?? SummaryStatus.ALL;
     const match: Record<string, unknown> = { user_id: userId };
 
     if (params?.from || params?.to) {
-      // Same due_date-as-string reasoning as findAll: sums every transaction due in the
-      // period regardless of payment status, matching what the transaction list shows.
-      match.due_date = {
+      // Matches due_date OR payment_date, same as findAll — a period match on
+      // due_date alone would silently drop every unplanned-but-paid transaction,
+      // and payment_date alone would drop every planned-but-unpaid one.
+      const dueDateRange: Record<string, string> = {
         ...(params.from && { $gte: params.from }),
         ...(params.to && { $lte: params.to }),
       };
+      const paymentDateRange: Record<string, Date> = {
+        ...(params.from && { $gte: dayToRange(params.from).startDate }),
+        ...(params.to && { $lt: dayToRange(params.to).endDate }),
+      };
+      Object.assign(
+        match,
+        this.periodMatchForStatus(dueDateRange, paymentDateRange, status),
+      );
     } else if (params?.month) {
+      // Translated to the same half-open shape as the from/to branch above ([month-01,
+      // next-month-01) on due_date, [startDate, endDate) on payment_date) so month=X and
+      // the equivalent from/to=X can never drift apart the way they did before this fix.
       const { startDate, endDate } = monthToRange(params.month);
-      match.payment_date = { $gte: startDate, $lt: endDate };
+      const dueDateRange = {
+        $gte: `${params.month}-01`,
+        $lt: `${shiftMonth(params.month, 1)}-01`,
+      };
+      const paymentDateRange = { $gte: startDate, $lt: endDate };
+      Object.assign(
+        match,
+        this.periodMatchForStatus(dueDateRange, paymentDateRange, status),
+      );
     }
 
     if (params?.type) {
@@ -379,10 +431,16 @@ export class TransactionService {
       };
     }
 
+    // Only the PAID totals describe money that actually moved, so only they are
+    // valued at the settled amount; ALL and PENDING are forecasts and stay on the
+    // planned amount.
+    const amountExpression =
+      status === SummaryStatus.PAID ? SETTLED_AMOUNT : '$amount';
+
     const results = (await this.transactionRepository
       .aggregate([
         { $match: match },
-        { $group: { _id: '$type', total: { $sum: '$amount' } } },
+        { $group: { _id: '$type', total: { $sum: amountExpression } } },
       ])
       .toArray()) as unknown as { _id: string; total: number }[];
 
@@ -464,43 +522,37 @@ export class TransactionService {
   }> {
     const targetMonth = month || currentMonthString();
 
-    // due_date is populated straight from the create DTO's raw string (unlike
-    // payment_date/created_at, which are always real Date objects set in code), so it's
-    // stored inconsistently — a Mongo-level $gte/$lt range match against it silently
-    // matches nothing on string-typed values. Fetch the candidate rows without a
-    // due_date filter and bucket by month in application code instead.
-    const pending = await this.transactionRepository.find({
-      where: {
-        user_id: userId,
-        type: 'EXPENSE',
-        payment_date: null,
-      } as any,
-    });
-
-    const totalsBySubcategory = new Map<
-      string,
-      { total: number; transactionCount: number }
-    >();
-    for (const t of pending) {
-      if (!t.due_date) continue;
-      if (monthKeyOf(new Date(t.due_date)) !== targetMonth) {
-        continue;
-      }
-      const key = t.subcategory_id ? t.subcategory_id.toString() : '';
-      const existing = totalsBySubcategory.get(key) ?? {
-        total: 0,
-        transactionCount: 0,
-      };
-      existing.total += Number(t.amount);
-      existing.transactionCount += 1;
-      totalsBySubcategory.set(key, existing);
-    }
-
-    const rows = Array.from(totalsBySubcategory.entries()).map(([key, v]) => ({
-      _id: key ? ObjectId.createFromHexString(key) : null,
-      total: v.total,
-      transactionCount: v.transactionCount,
-    }));
+    // The same half-open due_date bounds getSummary derives for a month (see its
+    // `month` branch and periodMatchForStatus's PENDING case), built from the same
+    // month string — that is what makes "the forecast agrees with the pending summary"
+    // structurally true rather than a coincidence of two hand-rolled filters.
+    // `payment_date: null` matches both an explicit null and an absent field.
+    const rows = (await this.transactionRepository
+      .aggregate([
+        {
+          $match: {
+            user_id: userId,
+            type: 'EXPENSE',
+            payment_date: null,
+            due_date: {
+              $gte: `${targetMonth}-01`,
+              $lt: `${shiftMonth(targetMonth, 1)}-01`,
+            },
+          },
+        },
+        {
+          $group: {
+            _id: '$subcategory_id',
+            total: { $sum: '$amount' },
+            transactionCount: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray()) as unknown as {
+      _id: ObjectId | null;
+      total: number;
+      transactionCount: number;
+    }[];
 
     const categories = await this.resolveCategoryTotals(rows);
     const totalPending = categories.reduce((sum, c) => sum + c.total, 0);
@@ -608,11 +660,22 @@ export class TransactionService {
         {
           $group: {
             _id: {
-              year: { $year: '$payment_date' },
-              month: { $month: '$payment_date' },
+              // $year/$month default to UTC, which bucketed a payment made late on
+              // the last day of a month in APP_TIMEZONE into the *next* month —
+              // disagreeing with getSummary, whose bounds come from monthToRange.
+              // Same class of off-by-one that monthToRange exists to prevent.
+              year: {
+                $year: { date: '$payment_date', timezone: APP_TIMEZONE },
+              },
+              month: {
+                $month: { date: '$payment_date', timezone: APP_TIMEZONE },
+              },
               type: '$type',
             },
-            total: { $sum: '$amount' },
+            // Settled amount, not planned: this series only ever contains paid
+            // transactions, and the account balance it is reconciled against is
+            // itself derived from paid_amount (see balanceEffect).
+            total: { $sum: SETTLED_AMOUNT },
           },
         },
       ])
@@ -642,6 +705,87 @@ export class TransactionService {
   }
 
   /**
+   * Paid income/expenses per calendar day in [from, to] (both `YYYY-MM-DD`,
+   * inclusive), bucketed by payment_date in APP_TIMEZONE and valued at the settled
+   * amount — the same rules as getMonthlyTrend, so a day-level view never disagrees
+   * with the monthly one. Days without movement are omitted; transfers are excluded
+   * by the type filter.
+   */
+  async getDailySummary(
+    userId: number,
+    from: string,
+    to: string,
+  ): Promise<
+    Array<{ date: string; expenses: number; income: number; count: number }>
+  > {
+    const { startDate } = dayToRange(from);
+    const { endDate } = dayToRange(to);
+
+    if (startDate >= endDate) {
+      throw new BadRequestException('"from" must not be after "to".');
+    }
+    const days = Math.round((endDate.getTime() - startDate.getTime()) / DAY_MS);
+    if (days > MAX_DAILY_SUMMARY_DAYS) {
+      throw new BadRequestException(
+        `Interval too long: at most ${MAX_DAILY_SUMMARY_DAYS} days.`,
+      );
+    }
+
+    const results = (await this.transactionRepository
+      .aggregate([
+        {
+          $match: {
+            user_id: userId,
+            type: { $in: ['EXPENSE', 'INCOME'] },
+            payment_date: { $gte: startDate, $lt: endDate },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              // Without an explicit timezone Mongo buckets in UTC, which moves a
+              // payment made late in the evening to the next day (see getMonthlyTrend).
+              day: {
+                $dateToString: {
+                  format: '%Y-%m-%d',
+                  date: '$payment_date',
+                  timezone: APP_TIMEZONE,
+                },
+              },
+              type: '$type',
+            },
+            total: { $sum: SETTLED_AMOUNT },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray()) as unknown as {
+      _id: { day: string; type: string };
+      total: number;
+      count: number;
+    }[];
+
+    const byDay = new Map<
+      string,
+      { date: string; expenses: number; income: number; count: number }
+    >();
+    for (const { _id, total, count } of results) {
+      const entry = byDay.get(_id.day) ?? {
+        date: _id.day,
+        expenses: 0,
+        income: 0,
+        count: 0,
+      };
+      if (_id.type === 'INCOME') entry.income += total;
+      else entry.expenses += total;
+      entry.count += count;
+      byDay.set(_id.day, entry);
+    }
+
+    return [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
    * Reconstructed total balance at the end of each of the trailing `months` months.
    * No historical balance snapshots exist, so this anchors to the current total
    * balance across all bank accounts and walks backwards subtracting each month's
@@ -652,7 +796,7 @@ export class TransactionService {
     months = 6,
   ): Promise<Array<{ month: string; balance: number }>> {
     const trend = await this.getMonthlyTrend(userId, months);
-    const currentTotal = await this.getCurrentTotalBalance();
+    const currentTotal = await this.getCurrentTotalBalance(userId);
 
     const balances = new Array<number>(trend.length);
     let runningBalance = currentTotal;
@@ -727,8 +871,10 @@ export class TransactionService {
     };
   }
 
-  private async getCurrentTotalBalance(): Promise<number> {
-    const accounts = await this.bankAccountRepository.find();
+  private async getCurrentTotalBalance(userId: number): Promise<number> {
+    const accounts = await this.bankAccountRepository.find({
+      where: { user_id: userId } as any,
+    });
     return accounts.reduce((sum, a) => sum + Number(a.balance), 0);
   }
 
@@ -739,6 +885,46 @@ export class TransactionService {
       where: { categoryId: toObjectId(categoryId) } as any,
     });
     return subcategories.map((s) => s.id);
+  }
+
+  /**
+   * `$or: [{due_date...}, {payment_date...}]` covering a period — mirrors findAll's
+   * "planned transactions by when they're due, unplanned ones by when they were
+   * actually paid" logic (see findAll's dueDateRange/paymentDateRange comment) so
+   * getSummary can no longer diverge from what the transaction list shows.
+   */
+  private periodMatch(
+    dueDateRange: Record<string, string>,
+    paymentDateRange: Record<string, Date>,
+  ): Record<string, unknown> {
+    return {
+      $or: [{ due_date: dueDateRange }, { payment_date: paymentDateRange }],
+    };
+  }
+
+  /**
+   * The period `$match` for a given SummaryStatus. Both getSummary branches (month
+   * and from/to) compute the same two ranges and hand them here, so a status can
+   * never mean one thing for `month` and another for the equivalent `from`/`to`.
+   *
+   * PENDING needs no `$or`: an unpaid transaction has no payment_date to match on,
+   * so the ALL disjunction would collapse to its due_date arm anyway. `payment_date: null`
+   * matches both an explicit null and an absent field, which is what "not yet paid" means.
+   */
+  private periodMatchForStatus(
+    dueDateRange: Record<string, string>,
+    paymentDateRange: Record<string, Date>,
+    status: SummaryStatus,
+  ): Record<string, unknown> {
+    switch (status) {
+      case SummaryStatus.PAID:
+        return { payment_date: paymentDateRange };
+      case SummaryStatus.PENDING:
+        return { due_date: dueDateRange, payment_date: null };
+      case SummaryStatus.ALL:
+      default:
+        return this.periodMatch(dueDateRange, paymentDateRange);
+    }
   }
 
   /**
@@ -814,6 +1000,28 @@ export class TransactionService {
       throw new BadRequestException(
         "Editing a transfer's amount or accounts is not supported; delete and recreate it instead.",
       );
+    }
+
+    // Re-pointing a transaction must not reach another user's account or subcategory.
+    for (const accountId of [
+      updateTransactionDto.account_id,
+      updateTransactionDto.target_account_id,
+    ]) {
+      if (!accountId) continue;
+      const owned = await this.bankAccountRepository.findOne({
+        where: { _id: toObjectId(accountId), user_id: userId } as any,
+      });
+      if (!owned) {
+        throw new NotFoundException('Account not found');
+      }
+    }
+    if (updateTransactionDto.subcategory_id) {
+      const subcat = await this.subcategoryRepository.findOne({
+        where: { _id: toObjectId(updateTransactionDto.subcategory_id) } as any,
+      });
+      if (!subcat || (subcat.user_id != null && subcat.user_id !== userId)) {
+        throw new NotFoundException('Subcategory not found');
+      }
     }
 
     const before = { ...transaction };

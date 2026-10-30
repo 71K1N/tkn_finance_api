@@ -16,6 +16,7 @@ export interface InsightHighlight {
   categoryName?: string;
   amount?: number;
   percentageIncrease?: number;
+  previousAverage?: number;
 }
 
 @Entity()

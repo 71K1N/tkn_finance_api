@@ -7,22 +7,29 @@ import {
   Patch,
   Delete,
   Query,
-  UseGuards,
+  ParseEnumPipe,
+  HttpCode,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { TransactionService } from './transaction.service';
+import { TransactionParserService } from './transaction-parser.service';
+import { ParseTransactionTextDto } from './dto/parse-transaction-text.dto';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { PaymentTransactionDto } from './dto/payment-transaction.dto';
-import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { ObjectId } from 'mongodb';
 import { FindAllTransactionQueryDto } from './dto/find-all-transaction-query.dto';
+import { DailySummaryQueryDto } from './dto/daily-summary-query.dto';
+import { SummaryStatus } from './summary-status.enum';
 
-@UseGuards(AuthGuard)
 @Controller('transaction')
 export class TransactionController {
-  constructor(private readonly transactionService: TransactionService) {}
+  constructor(
+    private readonly transactionService: TransactionService,
+    private readonly parserService: TransactionParserService,
+  ) {}
 
   @Post()
   create(
@@ -30,6 +37,14 @@ export class TransactionController {
     @Body() createTransactionDto: CreateTransactionDto,
   ) {
     return this.transactionService.create(createTransactionDto, userId);
+  }
+
+  // Tighter than the global 120/min: a miss in the user's history costs a Groq call.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('parse')
+  @HttpCode(200)
+  parse(@User() userId: number, @Body() dto: ParseTransactionTextDto) {
+    return this.parserService.parse(userId, dto.text);
   }
 
   @Get()
@@ -51,6 +66,11 @@ export class TransactionController {
     @Query('account_id') account_id?: string,
     @Query('category_id') category_id?: string,
     @Query('subcategory_id') subcategory_id?: string,
+    // Validated with a pipe rather than promoting this route's loose @Query params
+    // to a DTO: the global ValidationPipe runs forbidNonWhitelisted, so a DTO here
+    // would start rejecting stray query params existing callers already send.
+    @Query('status', new ParseEnumPipe(SummaryStatus, { optional: true }))
+    status?: SummaryStatus,
   ) {
     return this.transactionService.getSummary(userId, {
       month,
@@ -60,6 +80,7 @@ export class TransactionController {
       account_id,
       category_id,
       subcategory_id,
+      status,
     });
   }
 
@@ -73,6 +94,18 @@ export class TransactionController {
     return this.transactionService.getMonthlyTrend(
       userId,
       months ? Number(months) : undefined,
+    );
+  }
+
+  @Get('daily-summary')
+  getDailySummary(
+    @User() userId: number,
+    @Query() query: DailySummaryQueryDto,
+  ) {
+    return this.transactionService.getDailySummary(
+      userId,
+      query.from,
+      query.to,
     );
   }
 

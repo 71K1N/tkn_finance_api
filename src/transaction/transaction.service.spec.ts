@@ -16,6 +16,18 @@ import { PaymentTransactionDto } from './dto/payment-transaction.dto';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 import { paginate } from '../common/pagination/paginate.util';
+import { SummaryStatus } from './summary-status.enum';
+import {
+  APP_TIMEZONE,
+  dayKeyOf,
+  dayToRange,
+  monthToRange,
+} from '../common/date/month-range.util';
+
+/** The settled-amount accumulator the service is expected to build. */
+const SETTLED_AMOUNT_EXPRESSION = {
+  $cond: [{ $gt: ['$paid_amount', 0] }, '$paid_amount', '$amount'],
+};
 
 jest.mock('../common/pagination/paginate.util', () => ({
   paginate: jest.fn().mockResolvedValue({ data: [], pagination: {} }),
@@ -46,6 +58,90 @@ describe('TransactionService', () => {
     const pipeline = transactionRepository.aggregate.mock.calls.at(-1)?.[0];
     return pipeline.find((stage: Record<string, any>) => '$match' in stage)
       .$match;
+  };
+
+  /** The due_date/payment_date range from the last $match's `$or` clause. */
+  const lastMatchOrClause = (field: 'due_date' | 'payment_date') =>
+    (lastMatchStage().$or as Record<string, any>[]).find(
+      (clause) => field in clause,
+    )?.[field];
+
+  /** Mongo-style range check ($gte/$gt/$lte/$lt) against a single field value. */
+  const matchesRange = (
+    value: string | Date | null | undefined,
+    range: Record<string, string | Date> | undefined,
+  ): boolean => {
+    if (!range || value === null || value === undefined) return false;
+    if ('$gte' in range && !(value >= range.$gte)) return false;
+    if ('$gt' in range && !(value > range.$gt)) return false;
+    if ('$lte' in range && !(value <= range.$lte)) return false;
+    if ('$lt' in range && !(value < range.$lt)) return false;
+    return true;
+  };
+
+  /** Whether a `{ due_date, payment_date }` doc would satisfy a getSummary $match's `$or`. */
+  const matchIncludes = (
+    match: Record<string, any>,
+    doc: { due_date?: string | null; payment_date?: Date | null },
+  ): boolean =>
+    (match.$or as Record<string, any>[]).some((clause) => {
+      if ('due_date' in clause)
+        return matchesRange(doc.due_date, clause.due_date);
+      if ('payment_date' in clause)
+        return matchesRange(doc.payment_date, clause.payment_date);
+      return false;
+    });
+
+  /** The $group stage of the pipeline handed to the last aggregate() call. */
+  const lastGroupStage = () => {
+    const pipeline = transactionRepository.aggregate.mock.calls.at(-1)?.[0];
+    return pipeline.find((stage: Record<string, any>) => '$group' in stage)
+      .$group;
+  };
+
+  /** The accumulator expression the last aggregate() call sums into `total`. */
+  const lastSumExpression = () => lastGroupStage().total.$sum;
+
+  /**
+   * Whether a doc satisfies a getSummary $match, for any status — the `$or` form
+   * (ALL) as well as the flat due_date/payment_date forms (PAID/PENDING). A `null`
+   * clause value means "absent or null", matching Mongo's own semantics.
+   */
+  const docMatches = (
+    match: Record<string, any>,
+    doc: { due_date?: string | null; payment_date?: Date | null },
+  ): boolean => {
+    if (match.$or) return matchIncludes(match, doc);
+
+    const fieldMatches = (
+      field: 'due_date' | 'payment_date',
+      value: string | Date | null | undefined,
+    ): boolean => {
+      if (!(field in match)) return true;
+      if (match[field] === null) return value === null || value === undefined;
+      return matchesRange(value, match[field]);
+    };
+
+    return (
+      fieldMatches('due_date', doc.due_date) &&
+      fieldMatches('payment_date', doc.payment_date)
+    );
+  };
+
+  /** Evaluates the settled-amount `$cond` the way Mongo would, against one doc. */
+  const evalSettled = (
+    expr: any,
+    doc: { amount: number; paid_amount?: number | null },
+  ): number => {
+    if (expr === '$amount') return doc.amount;
+    const [condition, whenTrue, whenFalse] = expr.$cond;
+    const [fieldRef, threshold] = condition.$gt;
+    const fieldValue = (doc as Record<string, any>)[fieldRef.slice(1)];
+    const picked =
+      typeof fieldValue === 'number' && fieldValue > threshold
+        ? whenTrue
+        : whenFalse;
+    return (doc as Record<string, any>)[picked.slice(1)];
   };
 
   /** The options object handed to the last paginate() call. */
@@ -360,8 +456,38 @@ describe('TransactionService', () => {
       expect(update.$set.due_date).toBeNull();
     });
 
+    it('rejects pointing a transaction at an account owned by another user', async () => {
+      transactionRepository.findOne.mockResolvedValue(existingTransaction());
+      bankAccountRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.update(
+          id,
+          { account_id: '507f1f77bcf86cd799439015' } as any,
+          USER_ID,
+        ),
+      ).rejects.toThrow('Account not found');
+      expect(bankAccountRepository.findOne).toHaveBeenCalledWith({
+        where: expect.objectContaining({ user_id: USER_ID }),
+      });
+    });
+
+    it("rejects another user's private subcategory", async () => {
+      transactionRepository.findOne.mockResolvedValue(existingTransaction());
+      subcategoryRepository.findOne.mockResolvedValue({ user_id: USER_ID + 1 });
+
+      await expect(
+        service.update(
+          id,
+          { subcategory_id: '507f1f77bcf86cd799439014' } as any,
+          USER_ID,
+        ),
+      ).rejects.toThrow('Subcategory not found');
+    });
+
     it('converts subcategory_id to an ObjectId', async () => {
       transactionRepository.findOne.mockResolvedValue(existingTransaction());
+      subcategoryRepository.findOne.mockResolvedValue({ user_id: null });
       const subcategoryId = '507f1f77bcf86cd799439014';
 
       await service.update(
@@ -420,6 +546,7 @@ describe('TransactionService', () => {
             paid_amount: 100,
           }),
         );
+        bankAccountRepository.findOne.mockResolvedValue({ user_id: USER_ID });
 
         await service.update(
           id,
@@ -903,9 +1030,13 @@ describe('TransactionService', () => {
     it('getSummary matches the full month when given month=2026-07', async () => {
       await service.getSummary(1, { month: '2026-07' });
 
-      expect(lastMatchStage().payment_date).toEqual({
+      expect(lastMatchOrClause('payment_date')).toEqual({
         $gte: JULY_START,
         $lt: AUGUST_START,
+      });
+      expect(lastMatchOrClause('due_date')).toEqual({
+        $gte: '2026-07-01',
+        $lt: '2026-08-01',
       });
     });
 
@@ -932,7 +1063,7 @@ describe('TransactionService', () => {
       // 2026-07-31 22:00 in Brasília — already 2026-08-01 in UTC.
       const lateOnTheLastDay = new Date('2026-08-01T01:00:00.000Z');
       await service.getSummary(1, { month: '2026-07' });
-      const { $gte, $lt } = lastMatchStage().payment_date;
+      const { $gte, $lt } = lastMatchOrClause('payment_date');
 
       expect(lateOnTheLastDay >= $gte && lateOnTheLastDay < $lt).toBe(true);
     });
@@ -942,6 +1073,613 @@ describe('TransactionService', () => {
         BadRequestException,
       );
       expect(transactionRepository.aggregate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getSummary period matching', () => {
+    it('month: includes a planned transaction due in the month but not yet paid', async () => {
+      await service.getSummary(1, { month: '2026-08' });
+      const match = lastMatchStage();
+
+      expect(
+        matchIncludes(match, { due_date: '2026-08-15', payment_date: null }),
+      ).toBe(true);
+    });
+
+    it('month: includes an unplanned transaction paid within the month', async () => {
+      await service.getSummary(1, { month: '2026-08' });
+      const match = lastMatchStage();
+
+      expect(
+        matchIncludes(match, {
+          due_date: null,
+          payment_date: new Date('2026-08-15T12:00:00.000Z'),
+        }),
+      ).toBe(true);
+    });
+
+    it('from/to: includes an unplanned transaction paid within the range', async () => {
+      // This is the path that was silently dropping every unplanned transaction
+      // before this fix — due_date-only matching can never see a doc with no due_date.
+      await service.getSummary(1, { from: '2026-08-01', to: '2026-08-31' });
+      const match = lastMatchStage();
+
+      expect(
+        matchIncludes(match, {
+          due_date: null,
+          payment_date: new Date('2026-08-15T12:00:00.000Z'),
+        }),
+      ).toBe(true);
+    });
+
+    it('from/to: includes a planned transaction due in the range even if paid outside it', async () => {
+      await service.getSummary(1, { from: '2026-08-01', to: '2026-08-31' });
+      const match = lastMatchStage();
+
+      expect(
+        matchIncludes(match, {
+          due_date: '2026-08-15',
+          payment_date: new Date('2026-09-05T12:00:00.000Z'),
+        }),
+      ).toBe(true);
+    });
+
+    it('excludes a transaction with neither date inside the period', async () => {
+      await service.getSummary(1, { month: '2026-08' });
+      const match = lastMatchStage();
+
+      expect(
+        matchIncludes(match, {
+          due_date: '2026-07-15',
+          payment_date: new Date('2026-09-15T12:00:00.000Z'),
+        }),
+      ).toBe(false);
+    });
+
+    it('month and the equivalent from/to range produce identical inclusion decisions', async () => {
+      await service.getSummary(1, { month: '2026-08' });
+      const monthMatch = lastMatchStage();
+
+      await service.getSummary(1, { from: '2026-08-01', to: '2026-08-31' });
+      const rangeMatch = lastMatchStage();
+
+      const sampleDocs = [
+        { due_date: '2026-08-01', payment_date: null },
+        { due_date: '2026-08-31', payment_date: null },
+        { due_date: null, payment_date: new Date('2026-08-01T03:00:00.000Z') },
+        { due_date: null, payment_date: new Date('2026-08-31T23:00:00.000Z') },
+        { due_date: '2026-07-31', payment_date: null },
+        { due_date: null, payment_date: new Date('2026-09-01T03:00:00.000Z') },
+      ];
+
+      for (const doc of sampleDocs) {
+        expect(matchIncludes(monthMatch, doc)).toBe(
+          matchIncludes(rangeMatch, doc),
+        );
+      }
+    });
+  });
+
+  describe('getSummary status filter', () => {
+    const AUGUST = '2026-08';
+    const AUGUST_RANGE = { from: '2026-08-01', to: '2026-08-31' };
+
+    const inAugust = new Date('2026-08-15T12:00:00.000Z');
+    const inSeptember = new Date('2026-09-05T12:00:00.000Z');
+
+    it('omitting status produces the same $match as status=all', async () => {
+      await service.getSummary(1, { month: AUGUST });
+      const implicitMatch = lastMatchStage();
+
+      await service.getSummary(1, {
+        month: AUGUST,
+        status: SummaryStatus.ALL,
+      });
+
+      expect(lastMatchStage()).toEqual(implicitMatch);
+    });
+
+    it('omitting status sums the planned amount, unchanged from before', async () => {
+      await service.getSummary(1, { month: AUGUST });
+
+      expect(lastSumExpression()).toBe('$amount');
+    });
+
+    describe('status=paid', () => {
+      const paid = { month: AUGUST, status: SummaryStatus.PAID };
+
+      it('matches on payment_date alone, with no due_date arm', async () => {
+        await service.getSummary(1, paid);
+        const match = lastMatchStage();
+
+        expect(match.$or).toBeUndefined();
+        expect(match.due_date).toBeUndefined();
+        expect(match.payment_date).toEqual({
+          $gte: new Date('2026-08-01T03:00:00.000Z'),
+          $lt: new Date('2026-09-01T03:00:00.000Z'),
+        });
+      });
+
+      it('includes a transaction paid inside the period', async () => {
+        await service.getSummary(1, paid);
+
+        expect(
+          docMatches(lastMatchStage(), {
+            due_date: '2026-08-10',
+            payment_date: inAugust,
+          }),
+        ).toBe(true);
+      });
+
+      it('excludes a transaction due inside the period but not yet paid', async () => {
+        await service.getSummary(1, paid);
+
+        expect(
+          docMatches(lastMatchStage(), {
+            due_date: '2026-08-10',
+            payment_date: null,
+          }),
+        ).toBe(false);
+      });
+
+      it('excludes a transaction due inside the period but paid outside it', async () => {
+        await service.getSummary(1, paid);
+
+        expect(
+          docMatches(lastMatchStage(), {
+            due_date: '2026-08-10',
+            payment_date: inSeptember,
+          }),
+        ).toBe(false);
+      });
+
+      it('includes a transaction paid inside the period but due outside it', async () => {
+        await service.getSummary(1, paid);
+
+        expect(
+          docMatches(lastMatchStage(), {
+            due_date: '2026-07-10',
+            payment_date: inAugust,
+          }),
+        ).toBe(true);
+      });
+
+      it('sums the settled amount, not the planned one', async () => {
+        await service.getSummary(1, paid);
+
+        expect(lastSumExpression()).toEqual(SETTLED_AMOUNT_EXPRESSION);
+      });
+    });
+
+    describe('status=pending', () => {
+      const pending = { month: AUGUST, status: SummaryStatus.PENDING };
+
+      it('matches due_date in the period AND an absent payment_date', async () => {
+        await service.getSummary(1, pending);
+        const match = lastMatchStage();
+
+        expect(match.$or).toBeUndefined();
+        expect(match.due_date).toEqual({
+          $gte: '2026-08-01',
+          $lt: '2026-09-01',
+        });
+        expect(match.payment_date).toBeNull();
+      });
+
+      it('includes a transaction due in the period and unpaid', async () => {
+        await service.getSummary(1, pending);
+
+        expect(
+          docMatches(lastMatchStage(), {
+            due_date: '2026-08-10',
+            payment_date: null,
+          }),
+        ).toBe(true);
+      });
+
+      it('excludes a transaction due in the period but already paid', async () => {
+        await service.getSummary(1, pending);
+        const match = lastMatchStage();
+
+        // Paid inside the period and paid outside it are both excluded — pending
+        // is about what is still owed, not about when it settled.
+        expect(
+          docMatches(match, { due_date: '2026-08-10', payment_date: inAugust }),
+        ).toBe(false);
+        expect(
+          docMatches(match, {
+            due_date: '2026-08-10',
+            payment_date: inSeptember,
+          }),
+        ).toBe(false);
+      });
+
+      it('never includes an unplanned transaction (no due_date)', async () => {
+        await service.getSummary(1, pending);
+
+        expect(
+          docMatches(lastMatchStage(), {
+            due_date: null,
+            payment_date: null,
+          }),
+        ).toBe(false);
+      });
+
+      it('sums the planned amount', async () => {
+        await service.getSummary(1, pending);
+
+        expect(lastSumExpression()).toBe('$amount');
+      });
+    });
+
+    describe('settled amount fallback', () => {
+      // The expression is evaluated here the way Mongo would, so these assert the
+      // stated behaviour rather than just the shape of the pipeline.
+      it('uses paid_amount when a real value was recorded', () => {
+        expect(
+          evalSettled(SETTLED_AMOUNT_EXPRESSION, {
+            amount: 100,
+            paid_amount: 90,
+          }),
+        ).toBe(90);
+      });
+
+      it('falls back to amount when paid_amount is absent', () => {
+        expect(evalSettled(SETTLED_AMOUNT_EXPRESSION, { amount: 100 })).toBe(
+          100,
+        );
+      });
+
+      it('falls back to amount when paid_amount is null', () => {
+        expect(
+          evalSettled(SETTLED_AMOUNT_EXPRESSION, {
+            amount: 100,
+            paid_amount: null,
+          }),
+        ).toBe(100);
+      });
+
+      it('falls back to amount when paid_amount is exactly zero', () => {
+        // This is the case $ifNull would have gotten wrong: the entity declares
+        // `default: 0`, so a 0 here means "never recorded", not "paid nothing".
+        expect(
+          evalSettled(SETTLED_AMOUNT_EXPRESSION, {
+            amount: 100,
+            paid_amount: 0,
+          }),
+        ).toBe(100);
+      });
+    });
+
+    it('month and the equivalent from/to range agree for every status', async () => {
+      const sampleDocs = [
+        { due_date: '2026-08-01', payment_date: null },
+        { due_date: '2026-08-31', payment_date: null },
+        { due_date: null, payment_date: new Date('2026-08-01T03:00:00.000Z') },
+        { due_date: null, payment_date: new Date('2026-08-31T23:00:00.000Z') },
+        { due_date: '2026-08-10', payment_date: inAugust },
+        { due_date: '2026-08-10', payment_date: inSeptember },
+        { due_date: '2026-07-31', payment_date: null },
+        { due_date: null, payment_date: new Date('2026-09-01T03:00:00.000Z') },
+      ];
+
+      for (const status of Object.values(SummaryStatus)) {
+        await service.getSummary(1, { month: AUGUST, status });
+        const monthMatch = lastMatchStage();
+        const monthSum = lastSumExpression();
+
+        await service.getSummary(1, { ...AUGUST_RANGE, status });
+        const rangeMatch = lastMatchStage();
+
+        expect(lastSumExpression()).toEqual(monthSum);
+        for (const doc of sampleDocs) {
+          expect({
+            status,
+            doc,
+            included: docMatches(monthMatch, doc),
+          }).toEqual({ status, doc, included: docMatches(rangeMatch, doc) });
+        }
+      }
+    });
+  });
+
+  describe('getMonthlyTrend settled amounts', () => {
+    it('sums the settled amount rather than the planned one', async () => {
+      await service.getMonthlyTrend(1, 6);
+
+      expect(lastSumExpression()).toEqual(SETTLED_AMOUNT_EXPRESSION);
+    });
+
+    it('still buckets only paid transactions, by payment_date', async () => {
+      await service.getMonthlyTrend(1, 6);
+      const match = lastMatchStage();
+
+      expect(match.payment_date.$gte).toBeInstanceOf(Date);
+      expect(match.payment_date.$lt).toBeInstanceOf(Date);
+      expect(match.type).toEqual({ $in: ['EXPENSE', 'INCOME'] });
+    });
+
+    it('values a payment that settled below its planned amount at what was paid', async () => {
+      await service.getMonthlyTrend(1, 6);
+
+      expect(
+        evalSettled(lastSumExpression(), { amount: 250, paid_amount: 200 }),
+      ).toBe(200);
+    });
+
+    it('agrees with getSummary(status=paid) on how a month is valued and bounded', async () => {
+      const month = '2026-08';
+
+      await service.getSummary(1, { month, status: SummaryStatus.PAID });
+      const summarySum = lastSumExpression();
+      const summaryRange = lastMatchStage().payment_date;
+
+      await service.getMonthlyTrend(1, 6);
+      const trendSum = lastSumExpression();
+      const trendBucket = lastGroupStage()._id;
+
+      // Same valuation …
+      expect(trendSum).toEqual(summarySum);
+
+      // … and the same month boundary. getSummary bounds August via monthToRange
+      // (APP_TIMEZONE); getMonthlyTrend buckets with $year/$month, which must be
+      // given the same timezone or the two disagree for payments made near midnight
+      // at the edges of a month.
+      expect(trendBucket.year.$year.timezone).toBe(APP_TIMEZONE);
+      expect(trendBucket.month.$month.timezone).toBe(APP_TIMEZONE);
+      expect(summaryRange.$gte).toEqual(monthToRange(month).startDate);
+    });
+  });
+
+  describe('getDailySummary', () => {
+    const mockGroups = (
+      rows: Array<{
+        day: string;
+        type: 'EXPENSE' | 'INCOME';
+        total: number;
+        count: number;
+      }>,
+    ) =>
+      transactionRepository.aggregate.mockReturnValueOnce({
+        toArray: async () =>
+          rows.map(({ day, type, total, count }) => ({
+            _id: { day, type },
+            total,
+            count,
+          })),
+      });
+
+    it('pivots expenses and income into one entry per day, sorted by date', async () => {
+      mockGroups([
+        { day: '2026-03-12', type: 'EXPENSE', total: 30, count: 1 },
+        { day: '2026-03-10', type: 'INCOME', total: 500, count: 1 },
+        { day: '2026-03-10', type: 'EXPENSE', total: 100, count: 2 },
+      ]);
+
+      const result = await service.getDailySummary(
+        USER_ID,
+        '2026-03-01',
+        '2026-03-31',
+      );
+
+      expect(result).toEqual([
+        { date: '2026-03-10', expenses: 100, income: 500, count: 3 },
+        { date: '2026-03-12', expenses: 30, income: 0, count: 1 },
+      ]);
+    });
+
+    it('returns nothing for days without movement', async () => {
+      const result = await service.getDailySummary(
+        USER_ID,
+        '2026-03-01',
+        '2026-03-31',
+      );
+
+      expect(result).toEqual([]);
+    });
+
+    it('matches only the user’s paid income and expenses inside [from, to]', async () => {
+      await service.getDailySummary(USER_ID, '2026-03-01', '2026-03-31');
+      const match = lastMatchStage();
+
+      expect(match.user_id).toBe(USER_ID);
+      // type filter is what keeps transfers out; payment_date range keeps pending out
+      expect(match.type).toEqual({ $in: ['EXPENSE', 'INCOME'] });
+      expect(match.payment_date.$gte).toEqual(
+        dayToRange('2026-03-01').startDate,
+      );
+      expect(match.payment_date.$lt).toEqual(dayToRange('2026-03-31').endDate);
+    });
+
+    it('values each payment at the settled amount, like getMonthlyTrend', async () => {
+      await service.getDailySummary(USER_ID, '2026-03-01', '2026-03-31');
+
+      expect(lastSumExpression()).toEqual(SETTLED_AMOUNT_EXPRESSION);
+      expect(
+        evalSettled(lastSumExpression(), { amount: 100, paid_amount: 80 }),
+      ).toBe(80);
+      expect(
+        evalSettled(lastSumExpression(), { amount: 100, paid_amount: 0 }),
+      ).toBe(100);
+    });
+
+    it('buckets days in APP_TIMEZONE, so a late-evening payment keeps its local day', async () => {
+      await service.getDailySummary(USER_ID, '2026-03-01', '2026-03-31');
+
+      const day = lastGroupStage()._id.day.$dateToString;
+      expect(day.timezone).toBe(APP_TIMEZONE);
+      expect(day.format).toBe('%Y-%m-%d');
+
+      // 23:30 on the last day of a month, local time: already the next day in UTC,
+      // but the day range that bounds the $match still treats it as the 31st.
+      const { startDate, endDate } = dayToRange('2026-03-31');
+      const latePayment = new Date(endDate.getTime() - 30 * 60 * 1000);
+      expect(latePayment >= startDate && latePayment < endDate).toBe(true);
+      expect(dayKeyOf(latePayment)).toBe('2026-03-31');
+      expect(latePayment.toISOString().slice(0, 10)).not.toBe('2026-03-31');
+    });
+
+    it('accepts a full leap year (366 days)', async () => {
+      await expect(
+        service.getDailySummary(USER_ID, '2024-01-01', '2024-12-31'),
+      ).resolves.toEqual([]);
+    });
+
+    it('accepts a single day', async () => {
+      await expect(
+        service.getDailySummary(USER_ID, '2026-03-10', '2026-03-10'),
+      ).resolves.toEqual([]);
+    });
+
+    it.each([
+      ['an interval longer than 366 days', '2026-01-01', '2027-02-04'],
+      ['a reversed interval', '2026-06-01', '2026-01-01'],
+      ['a day that does not exist', '2026-02-30', '2026-03-31'],
+      ['a malformed date', 'abc', '2026-03-31'],
+    ])('rejects %s with a 400', async (_label, from, to) => {
+      await expect(
+        service.getDailySummary(USER_ID, from, to),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(transactionRepository.aggregate).not.toHaveBeenCalled();
+    });
+  });
+
+  // status=pending and getForecastedExpenses answer the same question ("what is still
+  // owed this month"), and now answer it the same way: both derive a half-open
+  // due_date range from the month string and hand it to Mongo. due_date is stored as a
+  // plain "YYYY-MM-DD" calendar date (see Transaction.due_date), so a string range is
+  // the whole filter — no new Date() conversion, and therefore no timezone in which
+  // the window could shift by a day.
+  describe('status=pending vs getForecastedExpenses', () => {
+    const MONTH = '2026-08';
+
+    const pendingExpense = (dueDate: string | null, amount: number) => ({
+      due_date: dueDate,
+      payment_date: null,
+      amount,
+      type: 'EXPENSE',
+      subcategory_id: null,
+    });
+
+    const candidates = () => [
+      pendingExpense('2026-08-01', 100), // first day of the month
+      pendingExpense('2026-08-31', 50), // last day of the month
+      pendingExpense('2026-07-31', 70), // last day of the month before
+      pendingExpense('2026-09-01', 30), // first day of the month after
+      pendingExpense(null, 999), // unplanned — never pending
+      { ...pendingExpense('2026-08-15', 400), payment_date: new Date() }, // paid
+    ];
+
+    /** The docs a $match would let through, in the order they were given. */
+    const selectedBy = (match: Record<string, any>) =>
+      candidates().filter((c) => docMatches(match, c));
+
+    /**
+     * Runs getForecastedExpenses with aggregate() evaluating the service's own $match
+     * against `docs` and grouping the survivors, so totalPending is what Mongo would
+     * return for the pipeline the service actually built rather than a hand-computed
+     * number. Every candidate has subcategory_id null, so they group into one row.
+     */
+    const runForecast = async (month: string) => {
+      transactionRepository.aggregate.mockImplementationOnce(
+        (pipeline: Record<string, any>[]) => ({
+          toArray: async () => {
+            const match = pipeline.find((s) => '$match' in s)!.$match;
+            const included = selectedBy(match);
+            return included.length
+              ? [
+                  {
+                    _id: null,
+                    total: included.reduce((sum, c) => sum + c.amount, 0),
+                    transactionCount: included.length,
+                  },
+                ]
+              : [];
+          },
+        }),
+      );
+      return service.getForecastedExpenses(1, month);
+    };
+
+    it('status=pending selects exactly the transactions due in the month', async () => {
+      await service.getSummary(1, {
+        month: MONTH,
+        status: SummaryStatus.PENDING,
+      });
+      const included = selectedBy(lastMatchStage());
+
+      expect(included.map((c) => c.due_date)).toEqual([
+        '2026-08-01',
+        '2026-08-31',
+      ]);
+      expect(included.reduce((sum, c) => sum + c.amount, 0)).toBe(150);
+    });
+
+    it('getForecastedExpenses reports the same total as status=pending', async () => {
+      const forecast = await runForecast(MONTH);
+
+      expect(forecast.totalPending).toBe(150);
+    });
+
+    it('derives the same due_date bounds as status=pending for the same month', async () => {
+      await runForecast(MONTH);
+      const forecastRange = lastMatchStage().due_date;
+
+      await service.getSummary(1, {
+        month: MONTH,
+        status: SummaryStatus.PENDING,
+      });
+      const pendingRange = lastMatchStage().due_date;
+
+      // Structural agreement: both sides build the window from the same month string,
+      // so they cannot drift apart the way two hand-rolled filters could.
+      expect(forecastRange).toEqual(pendingRange);
+      expect(forecastRange).toEqual({ $gte: '2026-08-01', $lt: '2026-09-01' });
+    });
+
+    describe('month boundaries', () => {
+      const includes = async (dueDate: string) => {
+        await runForecast(MONTH);
+        return docMatches(lastMatchStage(), {
+          due_date: dueDate,
+          payment_date: null,
+        });
+      };
+
+      it('includes an unpaid expense due on the first day of the month', async () => {
+        expect(await includes('2026-08-01')).toBe(true);
+      });
+
+      it('includes an unpaid expense due on the last day of the month', async () => {
+        expect(await includes('2026-08-31')).toBe(true);
+      });
+
+      it('excludes an unpaid expense due on the first day of the next month', async () => {
+        expect(await includes('2026-09-01')).toBe(false);
+      });
+
+      it('excludes an unpaid expense due on the last day of the previous month', async () => {
+        expect(await includes('2026-07-31')).toBe(false);
+      });
+    });
+
+    it('excludes an already-paid expense and one with no due date', async () => {
+      await runForecast(MONTH);
+      const match = lastMatchStage();
+
+      // Paid: due in the month, but payment_date is set.
+      expect(
+        docMatches(match, {
+          due_date: '2026-08-15',
+          payment_date: new Date('2026-08-15T12:00:00.000Z'),
+        }),
+      ).toBe(false);
+      // Unplanned: nothing to be due.
+      expect(docMatches(match, { due_date: null, payment_date: null })).toBe(
+        false,
+      );
+      // Neither reaches the total.
+      expect((await runForecast(MONTH)).totalPending).toBe(150);
     });
   });
 });

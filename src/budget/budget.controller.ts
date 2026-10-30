@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,13 +18,11 @@ import {
   BudgetResponseDto,
   BudgetAlertResponseDto,
 } from './dto/budget-response.dto';
-import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @Controller('budget')
-@UseGuards(AuthGuard)
 export class BudgetController {
   constructor(private readonly budgetService: BudgetService) {}
 
