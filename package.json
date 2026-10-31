@@ -25,7 +25,9 @@
     "migrate:fix-payment-date-timezone": "ts-node src/migrations/run-fix-payment-date-timezone.ts",
     "migrate:populate-owner-user-id": "ts-node src/migrations/run-populate-owner-user-id.ts",
     "migrate:normalize-due-date": "ts-node src/migrations/run-normalize-due-date.ts",
-    "deploy:rasp": "bash scripts/deploy-rasp.sh"
+    "deploy:rasp": "bash scripts/deploy-rasp.sh",
+    "prepare": "husky || true",
+    "release": "commit-and-tag-version"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
@@ -49,6 +51,8 @@
     "typeorm": "^0.3.20"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
     "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",
     "@nestjs/testing": "^10.0.0",
@@ -59,9 +63,11 @@
     "@types/supertest": "^6.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
+    "commit-and-tag-version": "^12.7.3",
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.0",
+    "husky": "^9.1.7",
     "jest": "^29.5.0",
     "prettier": "^3.0.0",
     "source-map-support": "^0.5.21",
