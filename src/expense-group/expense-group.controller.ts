@@ -11,7 +11,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ObjectId } from 'mongodb';
-import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
@@ -32,7 +31,6 @@ import { GroupExpenseResponseDto } from './dto/group-expense-response.dto';
 import { ExpenseSettlementResponseDto } from './dto/expense-settlement-response.dto';
 
 @Controller('expense-groups')
-@UseGuards(AuthGuard)
 export class ExpenseGroupController {
   constructor(
     private readonly expenseGroupService: ExpenseGroupService,

@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,14 +15,12 @@ import { SavingsGoalService } from '../savings-goal/savings-goal.service';
 import { CreateWishItemDto } from './dto/create-wish-item.dto';
 import { UpdateWishItemDto } from './dto/update-wish-item.dto';
 import { WishItemResponseDto } from './dto/wish-item-response.dto';
-import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { ObjectId } from 'mongodb';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @Controller('wish-item')
-@UseGuards(AuthGuard)
 export class WishItemController {
   constructor(
     private readonly wishItemService: WishItemService,

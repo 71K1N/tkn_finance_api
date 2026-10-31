@@ -23,6 +23,11 @@ export interface PaginateOptions {
    * Always AND-ed with search/filter conditions — never derive this from user-controlled input.
    */
   baseWhere?: Record<string, any>;
+  /**
+   * Optional aggregation pipeline stages to compute virtual fields before filtering/sorting.
+   * Applied before the main $match stage.
+   */
+  preQueryStages?: Record<string, any>[];
 }
 
 function escapeRegExp(value: string): string {
@@ -88,6 +93,43 @@ export async function paginate<T extends ObjectLiteral>(
     order = {
       [sort.key]: sort.direction === 'asc' ? 'ASC' : 'DESC',
     } as FindOptionsOrder<T>;
+  }
+
+  // If preQueryStages are provided, use aggregation instead of findAndCount for backward compatibility
+  if (options.preQueryStages && options.preQueryStages.length > 0) {
+    const pipeline: Record<string, any>[] = [
+      ...options.preQueryStages,
+      { $match: where as any },
+    ];
+
+    // Count total items
+    const countPipeline = [...pipeline, { $count: 'count' }];
+    const countResult = await repository.aggregate(countPipeline).toArray();
+    const totalItems = countResult.length > 0 ? countResult[0].count : 0;
+
+    // Add sort, skip, and take
+    if (sort && options.sortableFields?.includes(sort.key)) {
+      const sortDir = sort.direction === 'asc' ? 1 : -1;
+      pipeline.push({ $sort: { [sort.key]: sortDir } });
+    }
+    pipeline.push({ $skip: (page - 1) * pageSize });
+    pipeline.push({ $limit: pageSize });
+
+    // aggregateEntity() (not aggregate()) so items match the shape findAndCount()
+    // returns below: an entity with `id`, not a raw document with `_id`. It only
+    // surfaces fields declared as @Column on the entity — a preQueryStages field
+    // that isn't a real column will be computed but silently dropped here.
+    const data = await repository.aggregateEntity(pipeline).toArray();
+
+    return {
+      data: data as T[],
+      pagination: {
+        currentPage: page,
+        pageSize,
+        totalItems,
+        totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+      },
+    };
   }
 
   const [data, totalItems] = await repository.findAndCount({

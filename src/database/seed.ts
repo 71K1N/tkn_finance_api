@@ -157,6 +157,7 @@ async function seedFinancialData(
     bankAccountRepo.create({
       description: 'Conta Corrente',
       balance: 0,
+      user_id: SEED_USER_ID,
       created_by: SEED_USER_ID,
       updated_by: SEED_USER_ID,
     }),
@@ -168,6 +169,11 @@ async function seedFinancialData(
 
   for (let i = 5; i >= 0; i--) {
     const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 5);
+    // due_date is a calendar date stored as "YYYY-MM-DD" (see Transaction.due_date),
+    // not a timestamp. Built from monthDate's own parts so the seeded day is the day
+    // this loop meant, whatever timezone the seeding machine runs in — writing the
+    // Date object here is what left the collection with two storage types for due_date.
+    const dueDate = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}-05`;
     const isCurrentMonth = i === 0;
 
     const entries: {
@@ -216,7 +222,8 @@ async function seedFinancialData(
           name: entry.name,
           description: entry.name,
           amount: entry.amount,
-          due_date: monthDate,
+          due_date: dueDate as unknown as Date,
+          // payment_date genuinely is an instant, so it stays a real Date.
           payment_date: monthDate,
           paid_amount: entry.amount,
           subcategory_id: entry.subcategoryId,

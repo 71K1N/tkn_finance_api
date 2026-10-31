@@ -5,7 +5,6 @@ import {
   Delete,
   Body,
   Param,
-  UseGuards,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -14,13 +13,11 @@ import {
   CreateWebhookSubscriptionDto,
   WebhookSubscriptionResponseDto,
 } from './dto/create-webhook-subscription.dto';
-import { AuthGuard } from '../common/auth.guard';
 import { User } from '../common/user.decorator';
 import { ObjectId } from 'mongodb';
 import { MongoIdPipe } from '../common/mongo-id.pipe';
 
 @Controller('webhook')
-@UseGuards(AuthGuard)
 export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
 

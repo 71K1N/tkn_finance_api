@@ -115,4 +115,69 @@ describe('paginate', () => {
       expect.objectContaining({ userId: expect.anything() }),
     );
   });
+
+  it('returns pagination totals from the non-aggregation branch', async () => {
+    const repository = makeRepository([{ id: '1' }, { id: '2' }], 2);
+
+    const result = await paginate(repository, makeQuery({ pageSize: 2 }), {});
+
+    expect(result.pagination).toEqual({
+      currentPage: 1,
+      pageSize: 2,
+      totalItems: 2,
+      totalPages: 1,
+    });
+  });
+
+  describe('with preQueryStages (aggregation branch)', () => {
+    function makeAggregatingRepository(
+      data: any[],
+      countResult: { count: number }[] = [{ count: data.length }],
+    ) {
+      const aggregate = jest
+        .fn()
+        .mockReturnValue({ toArray: async () => countResult });
+      const aggregateEntity = jest
+        .fn()
+        .mockReturnValue({ toArray: async () => data });
+      return {
+        aggregate,
+        aggregateEntity,
+        findAndCount: jest.fn(),
+      } as unknown as MongoRepository<any> & {
+        aggregate: jest.Mock;
+        aggregateEntity: jest.Mock;
+      };
+    }
+
+    it('returns items from aggregateEntity(), carrying id and computed fields', async () => {
+      const items = [
+        { id: '1', is_planned: true },
+        { id: '2', is_planned: false },
+      ];
+      const repository = makeAggregatingRepository(items);
+
+      const result = await paginate(repository, makeQuery(), {
+        preQueryStages: [{ $set: { is_planned: { $literal: true } } }],
+      });
+
+      expect(result.data).toEqual(items);
+      expect((repository as any).aggregateEntity).toHaveBeenCalled();
+    });
+
+    it('counts via raw aggregate(), not aggregateEntity()', async () => {
+      const repository = makeAggregatingRepository(
+        [{ id: '1' }],
+        [{ count: 5 }],
+      );
+
+      const result = await paginate(repository, makeQuery({ pageSize: 1 }), {
+        preQueryStages: [{ $set: { is_planned: { $literal: true } } }],
+      });
+
+      expect((repository as any).aggregate).toHaveBeenCalled();
+      expect(result.pagination.totalItems).toBe(5);
+      expect(result.pagination.totalPages).toBe(5);
+    });
+  });
 });

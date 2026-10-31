@@ -13,6 +13,7 @@ import { WebhookEventType } from '../webhook/entities/webhook-subscription.entit
 import { toObjectId } from '../common/mongo.util';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 import { paginate } from '../common/pagination/paginate.util';
+import { lastNMonths, monthToRange } from '../common/date/month-range.util';
 
 @Injectable()
 export class BudgetService {
@@ -186,11 +187,7 @@ export class BudgetService {
       ObjectId.createFromHexString(s.id.toString()),
     );
 
-    // Parse month string YYYY-MM to get start and end dates
-    const [year, month] = budget.month.split('-');
-    const startDate = new Date(`${year}-${month}-01T00:00:00Z`);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1);
+    const { startDate, endDate } = monthToRange(budget.month);
 
     // Sum all *paid* expense transactions for this category's subcategories in this
     // month. Transactions are stored with type 'EXPENSE'/'INCOME' (uppercase — see
@@ -388,7 +385,7 @@ export class BudgetService {
     // Fetch all alerts for this month.
     // TypeORM's In() operator does not match ObjectId values against the mongodb driver
     // here — use the raw $in operator instead (same fix as calculateSpent above).
-    const alerts = await this.budgetAlertRepository.find({
+    const allAlerts = await this.budgetAlertRepository.find({
       where: {
         budgetId: {
           $in: budgets.map((b) =>
@@ -398,6 +395,29 @@ export class BudgetService {
       } as any,
       order: { triggeredAt: 'DESC' },
     });
+
+    // checkThresholds() never revokes a lower alert once spending climbs past it —
+    // e.g. a budget can accumulate both an EXCEEDED alert (from when it first hit
+    // 100%) and a later OVERAGE alert (once it grew past 100%). Collapse to the
+    // single most-severe alert per budget so callers see current status, not the
+    // full historical trail.
+    const severityRank: Record<AlertLevel, number> = {
+      [AlertLevel.OVERAGE]: 3,
+      [AlertLevel.EXCEEDED]: 2,
+      [AlertLevel.WARNING]: 1,
+    };
+    const currentAlertByBudget = new Map<string, BudgetAlert>();
+    for (const alert of allAlerts) {
+      const key = alert.budgetId.toString();
+      const current = currentAlertByBudget.get(key);
+      if (
+        !current ||
+        severityRank[alert.alertLevel] > severityRank[current.alertLevel]
+      ) {
+        currentAlertByBudget.set(key, alert);
+      }
+    }
+    const alerts = Array.from(currentAlertByBudget.values());
 
     return {
       budgets,
@@ -420,14 +440,7 @@ export class BudgetService {
       percentageUsed: number;
     }>
   > {
-    // Get last 6 months
-    const months = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      months.push(month);
-    }
+    const months = lastNMonths(6);
 
     const trend = [];
     for (const month of months) {

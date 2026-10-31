@@ -57,3 +57,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 src/database/tknfinance.sqlite
 specs/*
 CLAUDE.md
+openspec/*
+.github/skills/*
+.github/prompts/*
+.claude/*

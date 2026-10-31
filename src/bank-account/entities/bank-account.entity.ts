@@ -25,6 +25,10 @@ export class BankAccount {
   @UpdateDateColumn()
   updated_at: Date;
 
+  // Owner of the account; every query is scoped by it.
+  @Column({ nullable: true })
+  user_id: number | null;
+
   @Column({ nullable: true })
   created_by: number | null;
 

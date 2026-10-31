@@ -19,4 +19,13 @@ describe('AppController', () => {
       expect(appController.getHello()).toBe('Hello World!');
     });
   });
+
+  describe('version', () => {
+    it('should return the package version and commit', () => {
+      expect(appController.getVersion()).toEqual({
+        version: expect.stringMatching(/^\d+\.\d+\.\d+/),
+        commit: expect.any(String),
+      });
+    });
+  });
 });

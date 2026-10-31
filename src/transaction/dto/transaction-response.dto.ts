@@ -44,6 +44,7 @@ export class TransactionResponseDto {
   target_account_id?: string | null;
   paid_amount: number;
   type: string;
+  is_planned?: boolean;
   created_at: Date;
   updated_at: Date;
   created_by: number | null;

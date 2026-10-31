@@ -5,19 +5,41 @@ import Groq from 'groq-sdk';
 import {
   InsightSnapshot,
   InsightHighlight,
+  InsightSeverity,
 } from './entities/insight-snapshot.entity';
 import { TransactionService } from '../transaction/transaction.service';
+import { SummaryStatus } from '../transaction/summary-status.enum';
 import { BudgetService } from '../budget/budget.service';
 import { BankAccountService } from '../bank-account/bank-account.service';
 import { SavingsGoalService } from '../savings-goal/savings-goal.service';
+import {
+  currentMonthString,
+  monthsBefore,
+  todayString,
+} from '../common/date/month-range.util';
 
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 const ANOMALY_THRESHOLD_MULTIPLIER = 1.5;
+const SEVERITY_RANK: Record<InsightSeverity, number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
 
 interface FactsBundle {
   month: string;
   totalBalance: number;
   summary: { totalIncome: number; totalExpenses: number; balance: number };
+  /**
+   * The month valued at `status=paid` — money that actually moved. `summary` above is
+   * `status=all`, which already contains the expenses that are merely due, so it cannot
+   * be added to a pending total without counting those twice (see buildForecastHighlight).
+   */
+  realizedSummary: {
+    totalIncome: number;
+    totalExpenses: number;
+    balance: number;
+  };
   monthlyTrend: Array<{ month: string; income: number; expenses: number }>;
   categoryBreakdown: Array<{
     categoryName: string;
@@ -63,7 +85,7 @@ export class InsightsService {
   }
 
   async getOrCreate(userId: number): Promise<InsightSnapshot> {
-    const today = this.todayString();
+    const today = todayString();
     const existing = await this.insightSnapshotRepository.findOne({
       where: { userId, date: today } as any,
     });
@@ -74,7 +96,7 @@ export class InsightsService {
   }
 
   async refresh(userId: number): Promise<InsightSnapshot> {
-    const today = this.todayString();
+    const today = todayString();
     await this.insightSnapshotRepository.deleteOne({
       userId,
       date: today,
@@ -92,6 +114,7 @@ export class InsightsService {
     if (forecastHighlight) {
       highlights.push(forecastHighlight);
     }
+    this.sortHighlightsByPriority(highlights);
     const { summary, source, modelUsed } = await this.generateSummary(
       facts,
       highlights,
@@ -115,11 +138,12 @@ export class InsightsService {
     facts: FactsBundle;
     trailingAverageByCategory: Map<string, number>;
   }> {
-    const month = this.currentMonthString();
-    const trailingMonths = this.monthsBefore(month, 3);
+    const month = currentMonthString();
+    const trailingMonths = monthsBefore(month, 3);
 
     const [
       summary,
+      realizedSummary,
       monthlyTrend,
       categoryBreakdown,
       trailingBreakdowns,
@@ -128,7 +152,11 @@ export class InsightsService {
       totalBalance,
       savingsGoalsResult,
     ] = await Promise.all([
-      this.transactionService.getSummary(userId, month),
+      this.transactionService.getSummary(userId, { month }),
+      this.transactionService.getSummary(userId, {
+        month,
+        status: SummaryStatus.PAID,
+      }),
       this.transactionService.getMonthlyTrend(userId, 6),
       this.transactionService.getCategoryBreakdown(userId, month),
       Promise.all(
@@ -138,7 +166,7 @@ export class InsightsService {
       ),
       this.budgetService.getMonthlyReport(userId, month),
       this.transactionService.getForecastedExpenses(userId, month),
-      this.bankAccountService.getTotalBalance(),
+      this.bankAccountService.getTotalBalance(userId),
       this.savingsGoalService.findAll(userId, {
         page: 1,
         pageSize: 100,
@@ -165,6 +193,7 @@ export class InsightsService {
       month,
       totalBalance,
       summary,
+      realizedSummary,
       monthlyTrend,
       categoryBreakdown: categoryBreakdown.categories,
       budgetReport: {
@@ -215,11 +244,14 @@ export class InsightsService {
       if (ratio >= ANOMALY_THRESHOLD_MULTIPLIER) {
         const percentageIncrease = Math.round((ratio - 1) * 100);
         highlights.push({
-          message: `Gastos com ${category.categoryName} estão ${percentageIncrease}% acima da média dos últimos 3 meses.`,
+          message:
+            `Gastos com ${category.categoryName} estão ${percentageIncrease}% acima da média dos últimos 3 meses ` +
+            `(${this.formatCurrency(trailingAverage)} → ${this.formatCurrency(category.total)}).`,
           severity: percentageIncrease >= 100 ? 'critical' : 'warning',
           categoryName: category.categoryName,
           amount: category.total,
           percentageIncrease,
+          previousAverage: trailingAverage,
         });
       }
     }
@@ -250,6 +282,23 @@ export class InsightsService {
   }
 
   /**
+   * Orders highlights so the most important one is always first: by severity
+   * (critical > warning > info), then by percentageIncrease descending within the
+   * same severity (highlights without one, e.g. budget/savings-goal highlights, sort
+   * last in their tier). `Array.prototype.sort` is stable, so ties keep detection order.
+   * Every consumer (template summary, LLM prompt, stored snapshot) reads this array
+   * positionally, so sorting once here is what makes them all agree on what matters most.
+   */
+  private sortHighlightsByPriority(highlights: InsightHighlight[]): void {
+    highlights.sort(
+      (a, b) =>
+        SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+        (b.percentageIncrease ?? -Infinity) -
+          (a.percentageIncrease ?? -Infinity),
+    );
+  }
+
+  /**
    * Looks at expenses due this month that haven't been paid yet (getForecastedExpenses)
    * and turns them into a forward-looking highlight naming the pending total and its
    * biggest category — the LLM is later asked to phrase a next-month suggestion from
@@ -264,7 +313,10 @@ export class InsightsService {
       null,
     );
 
-    const projectedTotal = facts.summary.totalExpenses + totalPending;
+    // Realized + pending, so each expense counts once. Adding totalPending to
+    // `facts.summary` (which is status=all) would double count every expense that is
+    // due this month and still unpaid — they are already in that total.
+    const projectedTotal = facts.realizedSummary.totalExpenses + totalPending;
     const isAtRisk = projectedTotal > facts.summary.totalIncome;
 
     const categoryNote = topCategory
@@ -298,6 +350,9 @@ export class InsightsService {
               content:
                 'Você é um assistente financeiro. Você recebe um JSON com fatos financeiros ' +
                 'já calculados (números reais) e uma lista de destaques/alertas já detectados. ' +
+                'A lista highlights já vem ordenada por prioridade, do mais importante para o ' +
+                'menos importante — ao compor o resumo, dê peso ao topo da lista e garanta que ' +
+                'o destaque mais importante seja mencionado. ' +
                 'Sua única tarefa é narrar esses fatos em um resumo curto (2-3 frases) em ' +
                 'português do Brasil, em tom direto e útil. Se facts.forecastedExpenses.totalPending ' +
                 'for maior que zero, termine o resumo com uma frase de sugestão prática e acionável ' +
@@ -375,26 +430,5 @@ export class InsightsService {
       style: 'currency',
       currency: 'BRL',
     }).format(value);
-  }
-
-  private todayString(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  private currentMonthString(): string {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }
-
-  private monthsBefore(month: string, n: number): string[] {
-    const [year, monthNum] = month.split('-').map(Number);
-    const months: string[] = [];
-    for (let i = 1; i <= n; i++) {
-      const d = new Date(year, monthNum - 1 - i, 1);
-      months.push(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-      );
-    }
-    return months;
   }
 }

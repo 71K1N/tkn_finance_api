@@ -40,7 +40,9 @@ async function recalculateBudgets() {
     }
   }
 
-  console.log(`Concluído. ${changed} de ${budgets.length} budget(s) atualizados.`);
+  console.log(
+    `Concluído. ${changed} de ${budgets.length} budget(s) atualizados.`,
+  );
   await app.close();
 }
 
