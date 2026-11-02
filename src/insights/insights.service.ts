@@ -18,7 +18,9 @@ import {
   todayString,
 } from '../common/date/month-range.util';
 
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-20b';
+const groqModel = (): string =>
+  process.env.GROQ_INSIGHTS_MODEL || DEFAULT_GROQ_MODEL;
 const ANOMALY_THRESHOLD_MULTIPLIER = 1.5;
 const SEVERITY_RANK: Record<InsightSeverity, number> = {
   critical: 0,
@@ -342,7 +344,7 @@ export class InsightsService {
     if (this.groq) {
       try {
         const completion = await this.groq.chat.completions.create({
-          model: GROQ_MODEL,
+          model: groqModel(),
           response_format: { type: 'json_object' },
           messages: [
             {
@@ -375,7 +377,7 @@ export class InsightsService {
             return {
               summary: parsed.summary,
               source: 'llm',
-              modelUsed: GROQ_MODEL,
+              modelUsed: groqModel(),
             };
           }
         }
