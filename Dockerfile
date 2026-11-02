@@ -16,9 +16,9 @@ ENV NODE_ENV=production
 # Month aggregations resolve their own timezone via APP_TIMEZONE, but keeping the
 # container clock aligned makes logs and any remaining local Date usage match.
 ENV TZ=America/Sao_Paulo
-# .git is not in the build context; pass the commit (e.g. --build-arg GIT_SHA=$(git rev-parse --short HEAD)).
-ARG GIT_SHA=
-ENV GIT_SHA=$GIT_SHA
+# .git is not in the build context; pass the commit count (e.g. --build-arg BUILD_NUMBER=$(git rev-list --count HEAD)).
+ARG BUILD_NUMBER=
+ENV BUILD_NUMBER=$BUILD_NUMBER
 
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
