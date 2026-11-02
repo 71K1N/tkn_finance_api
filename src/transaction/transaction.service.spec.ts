@@ -1682,4 +1682,99 @@ describe('TransactionService', () => {
       expect((await runForecast(MONTH)).totalPending).toBe(150);
     });
   });
+
+  describe('findDue', () => {
+    // 2026-03-10 02:30 UTC is still 2026-03-09 in America/Sao_Paulo.
+    const NOW = new Date('2026-03-10T02:30:00.000Z');
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(NOW);
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const mockTotals = (
+      overdue: { total: number; count: number } | null,
+      upcoming: { total: number; count: number } | null,
+    ) => {
+      transactionRepository.aggregate
+        .mockReturnValueOnce({
+          toArray: async () => (overdue ? [overdue] : []),
+        })
+        .mockReturnValueOnce({
+          toArray: async () => (upcoming ? [upcoming] : []),
+        });
+    };
+
+    it('uses today in APP_TIMEZONE, not UTC, as the overdue/upcoming boundary', async () => {
+      mockTotals(null, null);
+      await service.findDue(USER_ID, 7);
+
+      const [overdueMatch, upcomingMatch] =
+        transactionRepository.aggregate.mock.calls.map(
+          ([pipeline]) => pipeline[0].$match,
+        );
+      expect(overdueMatch.due_date).toEqual({ $lt: '2026-03-09' });
+      expect(upcomingMatch.due_date).toEqual({
+        $gte: '2026-03-09',
+        $lte: '2026-03-16',
+      });
+    });
+
+    it('only matches pending income/expense of the given user (no payment_date)', async () => {
+      mockTotals(null, null);
+      await service.findDue(USER_ID, 7);
+
+      for (const [pipeline] of transactionRepository.aggregate.mock.calls) {
+        expect(pipeline[0].$match).toMatchObject({
+          user_id: USER_ID,
+          payment_date: null,
+          type: { $in: ['EXPENSE', 'INCOME'] },
+        });
+      }
+    });
+
+    it('computes the horizon across a month boundary', async () => {
+      mockTotals(null, null);
+      await service.findDue(USER_ID, 30);
+      const upcomingMatch =
+        transactionRepository.aggregate.mock.calls[1][0][0].$match;
+      expect(upcomingMatch.due_date.$lte).toBe('2026-04-08');
+    });
+
+    it('returns totals and counts for the whole group, items capped at 10, oldest first', async () => {
+      mockTotals({ total: 1400, count: 14 }, { total: 90, count: 1 });
+      const ten = Array.from({ length: 10 }, (_, i) => ({ id: `t${i}` }));
+      transactionRepository.find
+        .mockResolvedValueOnce(ten)
+        .mockResolvedValueOnce([{ id: 'u1' }]);
+
+      const result = await service.findDue(USER_ID, 15);
+
+      expect(result.overdue).toEqual({ total: 1400, count: 14, items: ten });
+      expect(result.upcoming).toEqual({
+        total: 90,
+        count: 1,
+        items: [{ id: 'u1' }],
+        days: 15,
+      });
+      for (const [options] of transactionRepository.find.mock.calls) {
+        expect(options.take).toBe(10);
+        expect(options.order).toEqual({ due_date: 'ASC' });
+      }
+    });
+
+    it('returns empty groups when nothing is pending', async () => {
+      mockTotals(null, null);
+      const result = await service.findDue(USER_ID, 7);
+      expect(result.overdue).toEqual({ total: 0, count: 0, items: [] });
+      expect(result.upcoming).toEqual({
+        total: 0,
+        count: 0,
+        items: [],
+        days: 7,
+      });
+    });
+  });
 });
