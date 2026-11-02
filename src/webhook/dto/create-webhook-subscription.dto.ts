@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsUrl } from 'class-validator';
+import { IsEnum, IsUrl } from 'class-validator';
 import { WebhookEventType } from '../entities/webhook-subscription.entity';
 
 export class CreateWebhookSubscriptionDto {

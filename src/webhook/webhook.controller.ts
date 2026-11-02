@@ -6,7 +6,6 @@ import {
   Body,
   Param,
   NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
 import { WebhookService } from './webhook.service';
 import {

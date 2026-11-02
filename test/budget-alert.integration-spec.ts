@@ -305,7 +305,7 @@ describe('Budget Alert Triggering Integration (P2-E2E)', () => {
   describe('Multiple Budgets & Simultaneous Alerts', () => {
     it('should handle multiple budgets in same month independently', async () => {
       // Create Food budget
-      const foodBudgetResponse = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post(budgetBaseUrl)
         .set('Authorization', authToken)
         .send({
@@ -334,7 +334,7 @@ describe('Budget Alert Triggering Integration (P2-E2E)', () => {
 
       const transportSubcategoryId = transportSubcategoryResponse.body.id;
 
-      const transportBudgetResponse = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post(budgetBaseUrl)
         .set('Authorization', authToken)
         .send({

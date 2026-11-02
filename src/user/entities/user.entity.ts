@@ -1,4 +1,10 @@
-import { Column, CreateDateColumn, Entity, Index, ObjectIdColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  ObjectIdColumn,
+} from 'typeorm';
 import { ObjectId } from 'mongodb';
 
 @Entity('users')

@@ -190,7 +190,7 @@ describe('Reporting Endpoints Load Testing (P2-E2E)', () => {
       for (const month of months) {
         const startTime = Date.now();
 
-        const response = await request(app.getHttpServer())
+        await request(app.getHttpServer())
           .get(`${budgetBaseUrl}/report/monthly?month=${month}`)
           .set('Authorization', authToken)
           .expect(200);

@@ -9,7 +9,10 @@ describe('JwtAuthGuard', () => {
   let users: { findById: jest.Mock };
   let guard: JwtAuthGuard;
 
-  const contextFor = (headers: Record<string, string>, handler = () => null) => {
+  const contextFor = (
+    headers: Record<string, string>,
+    handler = () => null,
+  ) => {
     const request: any = { headers };
     const context = {
       switchToHttp: () => ({ getRequest: () => request }),
@@ -26,7 +29,9 @@ describe('JwtAuthGuard', () => {
 
   it('accepts a valid token and sets request.user', async () => {
     const token = await jwt.signAsync({ sub: 5 }, { expiresIn: '5m' });
-    const { context, request } = contextFor({ authorization: `Bearer ${token}` });
+    const { context, request } = contextFor({
+      authorization: `Bearer ${token}`,
+    });
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.user).toEqual({ id: 5 });
@@ -63,7 +68,9 @@ describe('JwtAuthGuard', () => {
   });
 
   it('rejects a token signed with another secret', async () => {
-    const forged = await new JwtService({ secret: 'other' }).signAsync({ sub: 5 });
+    const forged = await new JwtService({ secret: 'other' }).signAsync({
+      sub: 5,
+    });
     const { context } = contextFor({ authorization: `Bearer ${forged}` });
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
       UnauthorizedException,

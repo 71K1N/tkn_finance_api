@@ -61,10 +61,7 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(200)
-  async logout(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE]);
     res.clearCookie(REFRESH_COOKIE, this.cookieOptions());
     return { success: true };

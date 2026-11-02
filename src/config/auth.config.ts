@@ -37,7 +37,9 @@ function list(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-export function loadAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig {
+export function loadAuthConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): AuthConfig {
   const missing = ['JWT_SECRET', 'GOOGLE_CLIENT_ID'].filter((key) => !env[key]);
   if (missing.length) {
     throw new Error(
