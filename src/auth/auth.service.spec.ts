@@ -123,7 +123,11 @@ describe('AuthService.loginWithGoogle', () => {
 
   it('links an existing e-mail even when it is not on the allowlist', async () => {
     config.allowedEmails = [];
-    users.findByEmail.mockResolvedValue({ id: 1, active: true, email: 'maria@example.com' });
+    users.findByEmail.mockResolvedValue({
+      id: 1,
+      active: true,
+      email: 'maria@example.com',
+    });
 
     await expect(service.loginWithGoogle('token')).resolves.toBeDefined();
   });

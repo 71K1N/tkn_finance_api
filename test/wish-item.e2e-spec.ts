@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';

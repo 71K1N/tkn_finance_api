@@ -29,6 +29,7 @@ import {
   monthKeyOf,
   monthToRange,
   shiftMonth,
+  todayString,
 } from '../common/date/month-range.util';
 import { SummaryStatus } from './summary-status.enum';
 
@@ -54,6 +55,8 @@ const SETTLED_AMOUNT = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Max rows listed per group in findDue(); totals and counts always cover the whole group.
+const DUE_ITEMS_LIMIT = 10;
 // A full leap year, so the front can ask for Jan 1 – Dec 31 of any year.
 const MAX_DAILY_SUMMARY_DAYS = 366;
 
@@ -365,6 +368,64 @@ export class TransactionService {
       throw new NotFoundException('Transaction not found');
     }
     return transaction;
+  }
+
+  /**
+   * Pending transactions (a due_date and no payment_date) split into overdue
+   * (due before today) and upcoming (due from today through today + `days`).
+   * "Today" is the calendar day in APP_TIMEZONE, compared against due_date as a
+   * plain YYYY-MM-DD string. total/count cover the whole group; items is capped.
+   */
+  async findDue(userId: number, days: number) {
+    const today = todayString();
+    const [y, m, d] = today.split('-').map(Number);
+    const horizon = new Date(Date.UTC(y, m - 1, d + days))
+      .toISOString()
+      .slice(0, 10);
+
+    // `payment_date: null` matches both an explicit null and an absent field.
+    const base = {
+      user_id: userId,
+      type: { $in: ['EXPENSE', 'INCOME'] },
+      payment_date: null,
+    };
+    const groups = {
+      overdue: { ...base, due_date: { $lt: today } },
+      upcoming: { ...base, due_date: { $gte: today, $lte: horizon } },
+    };
+
+    const load = async (match: Record<string, unknown>) => {
+      const [totals, items] = await Promise.all([
+        this.transactionRepository
+          .aggregate([
+            { $match: match },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: '$amount' },
+                count: { $sum: 1 },
+              },
+            },
+          ])
+          .toArray() as unknown as Promise<{ total: number; count: number }[]>,
+        this.transactionRepository.find({
+          where: match as any,
+          order: { due_date: 'ASC' },
+          take: DUE_ITEMS_LIMIT,
+        }),
+      ]);
+      return {
+        total: totals[0]?.total ?? 0,
+        count: totals[0]?.count ?? 0,
+        items,
+      };
+    };
+
+    const [overdue, upcoming] = await Promise.all([
+      load(groups.overdue),
+      load(groups.upcoming),
+    ]);
+    return { overdue, upcoming: { ...upcoming, days } };
   }
 
   async getSummary(

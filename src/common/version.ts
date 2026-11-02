@@ -4,14 +4,14 @@ import { join } from 'node:path';
 
 export interface VersionInfo {
   version: string;
-  commit: string;
+  build: string;
 }
 
-// Docker images have no .git (see .dockerignore), so the build passes GIT_SHA.
-function resolveCommit(): string {
-  if (process.env.GIT_SHA) return process.env.GIT_SHA.slice(0, 7);
+// Docker images have no .git (see .dockerignore), so the build passes BUILD_NUMBER (commit count).
+function resolveBuild(): string {
+  if (process.env.BUILD_NUMBER) return process.env.BUILD_NUMBER.trim();
   try {
-    return execSync('git rev-parse --short HEAD', {
+    return execSync('git rev-list --count HEAD', {
       stdio: ['ignore', 'pipe', 'ignore'],
     })
       .toString()
@@ -33,7 +33,11 @@ function resolveVersion(): string {
   }
 }
 
+const BASE_VERSION = resolveVersion();
+const BUILD = resolveBuild();
+
+// e.g. "0.2.0.2345" (package.json version + commit count).
 export const VERSION_INFO: VersionInfo = {
-  version: resolveVersion(),
-  commit: resolveCommit(),
+  version: BUILD === 'unknown' ? BASE_VERSION : `${BASE_VERSION}.${BUILD}`,
+  build: BUILD,
 };

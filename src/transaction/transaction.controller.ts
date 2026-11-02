@@ -22,6 +22,7 @@ import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { ObjectId } from 'mongodb';
 import { FindAllTransactionQueryDto } from './dto/find-all-transaction-query.dto';
 import { DailySummaryQueryDto } from './dto/daily-summary-query.dto';
+import { DueQueryDto } from './dto/due-query.dto';
 import { SummaryStatus } from './summary-status.enum';
 
 @Controller('transaction')
@@ -54,6 +55,12 @@ export class TransactionController {
       to: query.to,
       category_id: query.category_id,
     });
+  }
+
+  // Declared before ':id' so "due" is not parsed as an id.
+  @Get('due')
+  getDue(@User() userId: number, @Query() query: DueQueryDto) {
+    return this.transactionService.findDue(userId, query.days);
   }
 
   @Get('summary')

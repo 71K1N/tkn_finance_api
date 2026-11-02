@@ -4,14 +4,14 @@ Vale para o front da API (`tkn_finance_api`); o front (`tkn_finance_next`) segue
 
 ## Versionamento
 
-[SemVer](https://semver.org/lang/pt-BR/) `MAJOR.MINOR.PATCH` com o hash do commit como *build metadata*:
+[SemVer](https://semver.org/lang/pt-BR/) `MAJOR.MINOR.PATCH` com a contagem de commits como 4º segmento (número de build):
 
 ```
-0.2.0+e7cbedf
+0.2.0.2345
 ```
 
 - A **versão** vem do `package.json` e da tag git `vX.Y.Z` (fonte de verdade).
-- O **hash** vem da variável `GIT_SHA` (build Docker) ou do `git rev-parse` em runtime. A API expõe os dois em `GET /version` → `{ "version": "0.2.0", "commit": "e7cbedf" }`; o build do front mostra o dele na Sidebar.
+- O **número de build** vem da variável `BUILD_NUMBER` (build Docker) ou de `git rev-list --count HEAD` em runtime. A API expõe em `GET /version` → `{ "version": "0.2.0.2345", "build": "2345" }`; o build do front mostra o dele na Sidebar.
 - Enquanto a versão for `0.x`, o bump automático trata `feat` como patch e quebras de compatibilidade como minor; para uma release com funcionalidades use `--release-as minor`. O `1.0.0` marca a primeira versão estável.
 - Front e back versionam de forma independente. Compatibilidade entre eles: ver tabela abaixo.
 
@@ -41,7 +41,7 @@ Vale para o front da API (`tkn_finance_api`); o front (`tkn_finance_next`) segue
    O push da tag dispara `.github/workflows/release.yml`, que cria a GitHub Release.
 6. Deploy: ver `scripts/deploy-rasp.sh` ou `../deploy` (docker compose). No Docker, passe o commit:
    ```bash
-   docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) -t tkn-finance-api:0.2.0 .
+   docker build --build-arg BUILD_NUMBER=$(git rev-list --count HEAD) -t tkn-finance-api:0.2.0 .
    ```
 7. Confira em produção: `curl <host>/api/version` deve devolver a versão e o commit publicados.
 

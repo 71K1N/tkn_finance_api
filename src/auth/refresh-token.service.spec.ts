@@ -79,15 +79,18 @@ describe('RefreshTokenService', () => {
     expect(next.expiresAt.getTime()).toBe(
       new Date('2026-01-05T00:00:00Z').getTime() + 7 * DAY,
     );
-    expect(next.expiresAt.getTime()).toBeGreaterThan(
-      first.expiresAt.getTime(),
-    );
+    expect(next.expiresAt.getTime()).toBeGreaterThan(first.expiresAt.getTime());
   });
 
   it('never extends beyond the absolute family limit', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-01-01T00:00:00Z'));
     let current = await service.issue(5);
-    for (const day of ['2026-01-07', '2026-01-13', '2026-01-19', '2026-01-25']) {
+    for (const day of [
+      '2026-01-07',
+      '2026-01-13',
+      '2026-01-19',
+      '2026-01-25',
+    ]) {
       jest.setSystemTime(new Date(`${day}T00:00:00Z`));
       current = await service.rotate(current.token);
     }

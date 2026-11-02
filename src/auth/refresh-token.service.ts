@@ -24,7 +24,10 @@ export class RefreshTokenService {
   ) {}
 
   /** Starts a new session family. */
-  issue(userId: number, userAgent?: string | null): Promise<IssuedRefreshToken> {
+  issue(
+    userId: number,
+    userAgent?: string | null,
+  ): Promise<IssuedRefreshToken> {
     const now = Date.now();
     return this.create({
       userId,

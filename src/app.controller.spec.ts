@@ -24,7 +24,7 @@ describe('AppController', () => {
     it('should return the package version and commit', () => {
       expect(appController.getVersion()).toEqual({
         version: expect.stringMatching(/^\d+\.\d+\.\d+/),
-        commit: expect.any(String),
+        build: expect.any(String),
       });
     });
   });

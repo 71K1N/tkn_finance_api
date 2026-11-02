@@ -1,12 +1,15 @@
 import {
   Column,
   Entity,
+  Index,
   ObjectIdColumn,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { ObjectId } from 'mongodb';
 
+// Serves findDue(): pending transactions of a user ordered/ranged by due_date.
+@Index(['user_id', 'payment_date', 'due_date'])
 @Entity()
 export class Transaction {
   @ObjectIdColumn()
