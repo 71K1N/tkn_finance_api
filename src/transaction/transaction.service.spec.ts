@@ -1694,10 +1694,13 @@ describe('TransactionService', () => {
       jest.useRealTimers();
     });
 
-    const mockTotals = (
-      overdue: { total: number; count: number } | null,
-      upcoming: { total: number; count: number } | null,
-    ) => {
+    type Totals = {
+      total: number;
+      count: number;
+      income: number;
+      expense: number;
+    };
+    const mockTotals = (overdue: Totals | null, upcoming: Totals | null) => {
       transactionRepository.aggregate
         .mockReturnValueOnce({
           toArray: async () => (overdue ? [overdue] : []),
@@ -1744,7 +1747,10 @@ describe('TransactionService', () => {
     });
 
     it('returns totals and counts for the whole group, items capped at 10, oldest first', async () => {
-      mockTotals({ total: 1400, count: 14 }, { total: 90, count: 1 });
+      mockTotals(
+        { total: 1400, count: 14, income: 0, expense: 1400 },
+        { total: 90, count: 1, income: 90, expense: 0 },
+      );
       const ten = Array.from({ length: 10 }, (_, i) => ({ id: `t${i}` }));
       transactionRepository.find
         .mockResolvedValueOnce(ten)
@@ -1752,10 +1758,18 @@ describe('TransactionService', () => {
 
       const result = await service.findDue(USER_ID, 15);
 
-      expect(result.overdue).toEqual({ total: 1400, count: 14, items: ten });
+      expect(result.overdue).toEqual({
+        total: 1400,
+        count: 14,
+        income: 0,
+        expense: 1400,
+        items: ten,
+      });
       expect(result.upcoming).toEqual({
         total: 90,
         count: 1,
+        income: 90,
+        expense: 0,
         items: [{ id: 'u1' }],
         days: 15,
       });
@@ -1768,13 +1782,54 @@ describe('TransactionService', () => {
     it('returns empty groups when nothing is pending', async () => {
       mockTotals(null, null);
       const result = await service.findDue(USER_ID, 7);
-      expect(result.overdue).toEqual({ total: 0, count: 0, items: [] });
+      expect(result.overdue).toEqual({
+        total: 0,
+        count: 0,
+        income: 0,
+        expense: 0,
+        items: [],
+      });
       expect(result.upcoming).toEqual({
         total: 0,
         count: 0,
+        income: 0,
+        expense: 0,
         items: [],
         days: 7,
       });
+    });
+
+    it('splits the group total into income and expense', async () => {
+      mockTotals({ total: 609.9, count: 2, income: 480, expense: 129.9 }, null);
+      transactionRepository.find
+        .mockResolvedValueOnce([{ id: 'in' }, { id: 'out' }])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.findDue(USER_ID, 7);
+
+      expect(result.overdue).toMatchObject({
+        total: 609.9,
+        income: 480,
+        expense: 129.9,
+      });
+    });
+
+    it('sums income and expense by type over the whole group, not the capped items', async () => {
+      mockTotals(null, null);
+      await service.findDue(USER_ID, 7);
+
+      for (const [pipeline] of transactionRepository.aggregate.mock.calls) {
+        // Only $match then $group: no $limit/$sort, so the sums cover every match.
+        expect(pipeline).toHaveLength(2);
+        expect(pipeline[1].$group).toMatchObject({
+          income: {
+            $sum: { $cond: [{ $eq: ['$type', 'INCOME'] }, '$amount', 0] },
+          },
+          expense: {
+            $sum: { $cond: [{ $eq: ['$type', 'EXPENSE'] }, '$amount', 0] },
+          },
+        });
+      }
     });
   });
 });
