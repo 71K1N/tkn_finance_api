@@ -57,6 +57,16 @@ const SETTLED_AMOUNT = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Max rows listed per group in findDue(); totals and counts always cover the whole group.
 const DUE_ITEMS_LIMIT = 10;
+
+// income/expense split `total` by type (amounts are always positive), so clients
+// can show a signed net balance that is right even when `items` is capped.
+type DueTotals = {
+  total: number;
+  count: number;
+  income: number;
+  expense: number;
+};
+
 // A full leap year, so the front can ask for Jan 1 – Dec 31 of any year.
 const MAX_DAILY_SUMMARY_DAYS = 366;
 
@@ -374,7 +384,8 @@ export class TransactionService {
    * Pending transactions (a due_date and no payment_date) split into overdue
    * (due before today) and upcoming (due from today through today + `days`).
    * "Today" is the calendar day in APP_TIMEZONE, compared against due_date as a
-   * plain YYYY-MM-DD string. total/count cover the whole group; items is capped.
+   * plain YYYY-MM-DD string. total/count/income/expense cover the whole group;
+   * items is capped.
    */
   async findDue(userId: number, days: number) {
     const today = todayString();
@@ -404,10 +415,20 @@ export class TransactionService {
                 _id: null,
                 total: { $sum: '$amount' },
                 count: { $sum: 1 },
+                income: {
+                  $sum: {
+                    $cond: [{ $eq: ['$type', 'INCOME'] }, '$amount', 0],
+                  },
+                },
+                expense: {
+                  $sum: {
+                    $cond: [{ $eq: ['$type', 'EXPENSE'] }, '$amount', 0],
+                  },
+                },
               },
             },
           ])
-          .toArray() as unknown as Promise<{ total: number; count: number }[]>,
+          .toArray() as unknown as Promise<DueTotals[]>,
         this.transactionRepository.find({
           where: match as any,
           order: { due_date: 'ASC' },
@@ -417,6 +438,8 @@ export class TransactionService {
       return {
         total: totals[0]?.total ?? 0,
         count: totals[0]?.count ?? 0,
+        income: totals[0]?.income ?? 0,
+        expense: totals[0]?.expense ?? 0,
         items,
       };
     };
