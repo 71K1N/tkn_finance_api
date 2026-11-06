@@ -1,21 +1,39 @@
-import { Category } from 'src/category/entities/category.entity';
-import { Column, Entity, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  ObjectIdColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 @Entity()
 export class Subcategory {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
-  @Column({ length: 255 })
+  @Column()
   name: string;
 
-  @Column({ length: 255 })
+  @Column()
   description: string;
 
-  @Column('int')
-  categoryId: number;
+  @Column()
+  categoryId: ObjectId;
 
-  @ManyToOne(() => Category)
-  @JoinColumn({ name: 'categoryId' })
-  category: Category;
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
+
+  // Owner. Null on a category/subcategory means the shared system catalogue (read-only).
+  @Column({ nullable: true })
+  user_id: number | null;
+
+  @Column({ nullable: true })
+  created_by: number | null;
+
+  @Column({ nullable: true })
+  updated_by: number | null;
 }

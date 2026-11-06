@@ -6,40 +6,49 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
 } from '@nestjs/common';
+import { ObjectId } from 'mongodb';
+import { MongoIdPipe } from '../common/mongo-id.pipe';
 import { SubcategoryService } from './subcategory.service';
 import { CreateSubcategoryDto } from './dto/create-subcategory.dto';
 import { UpdateSubcategoryDto } from './dto/update-subcategory.dto';
+import { User } from '../common/user.decorator';
+import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 
 @Controller('subcategory')
 export class SubcategoryController {
   constructor(private readonly subcategoryService: SubcategoryService) {}
 
   @Post()
-  create(@Body() createSubcategoryDto: CreateSubcategoryDto) {
-    return this.subcategoryService.create(createSubcategoryDto);
+  create(
+    @User() userId: number,
+    @Body() createSubcategoryDto: CreateSubcategoryDto,
+  ) {
+    return this.subcategoryService.create(userId, createSubcategoryDto);
   }
 
   @Get()
-  findAll() {
-    return this.subcategoryService.findAll();
+  findAll(@User() userId: number, @Query() query: FindAllQueryDto) {
+    return this.subcategoryService.findAll(userId, query);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.subcategoryService.findOne(+id);
+  findOne(@User() userId: number, @Param('id', MongoIdPipe) id: ObjectId) {
+    return this.subcategoryService.findOne(id, userId);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id: string,
+    @User() userId: number,
+    @Param('id', MongoIdPipe) id: ObjectId,
     @Body() updateSubcategoryDto: UpdateSubcategoryDto,
   ) {
-    return this.subcategoryService.update(+id, updateSubcategoryDto);
+    return this.subcategoryService.update(id, userId, updateSubcategoryDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.subcategoryService.remove(+id);
+  remove(@User() userId: number, @Param('id', MongoIdPipe) id: ObjectId) {
+    return this.subcategoryService.remove(id, userId);
   }
 }

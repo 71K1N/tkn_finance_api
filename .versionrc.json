@@ -1,0 +1,15 @@
+{
+  "header": "# Changelog\n\nTodas as mudanças relevantes deste projeto. Gerado por `npm run release` — não edite as seções de versões já publicadas.\n",
+  "types": [
+    { "type": "feat", "section": "Funcionalidades" },
+    { "type": "fix", "section": "Correções" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refatorações" },
+    { "type": "docs", "hidden": true },
+    { "type": "style", "hidden": true },
+    { "type": "test", "hidden": true },
+    { "type": "build", "hidden": true },
+    { "type": "ci", "hidden": true },
+    { "type": "chore", "hidden": true }
+  ]
+}

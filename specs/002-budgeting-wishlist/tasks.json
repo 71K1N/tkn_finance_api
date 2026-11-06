@@ -1,0 +1,154 @@
+[
+  {
+    "id": 1,
+    "title": "Create Budget, BudgetAlert, WishItem, SavingsGoal entities",
+    "status": "not-started",
+    "phase": 1,
+    "paths": [
+      "src/budget/entities/budget.entity.ts",
+      "src/budget/entities/budget-alert.entity.ts",
+      "src/wish-item/entities/wish-item.entity.ts",
+      "src/savings-goal/entities/savings-goal.entity.ts",
+      "src/app.module.ts"
+    ]
+  },
+  {
+    "id": 2,
+    "title": "Create Budget Service (CRUD, calculate spent, check thresholds)",
+    "status": "not-started",
+    "phase": 2,
+    "paths": [
+      "src/budget/budget.service.ts",
+      "src/budget/budget.module.ts"
+    ]
+  },
+  {
+    "id": 3,
+    "title": "Create Budget Controller & Endpoints (POST, GET, PATCH, DELETE)",
+    "status": "not-started",
+    "phase": 2,
+    "paths": [
+      "src/budget/budget.controller.ts",
+      "src/budget/dto/create-budget.dto.ts",
+      "src/budget/dto/update-budget.dto.ts"
+    ]
+  },
+  {
+    "id": 4,
+    "title": "Hook Transaction Service to Budget Alerts",
+    "status": "not-started",
+    "phase": 2,
+    "paths": [
+      "src/transaction/transaction.service.ts",
+      "src/budget/budget.service.ts"
+    ]
+  },
+  {
+    "id": 5,
+    "title": "Create Budget Reporting Endpoint (vs actual, trends)",
+    "status": "not-started",
+    "phase": 2,
+    "paths": [
+      "src/budget/budget.controller.ts",
+      "src/budget/dto/budget-report.dto.ts"
+    ]
+  },
+  {
+    "id": 6,
+    "title": "Create WishItem Service (CRUD, progress, status lifecycle)",
+    "status": "not-started",
+    "phase": 3,
+    "paths": [
+      "src/wish-item/wish-item.service.ts",
+      "src/wish-item/wish-item.module.ts"
+    ]
+  },
+  {
+    "id": 7,
+    "title": "Create SavingsGoal Service (CRUD, deposit, completion date calc)",
+    "status": "not-started",
+    "phase": 3,
+    "paths": [
+      "src/savings-goal/savings-goal.service.ts",
+      "src/savings-goal/savings-goal.module.ts"
+    ]
+  },
+  {
+    "id": 8,
+    "title": "Create WishItem Controller & Endpoints",
+    "status": "not-started",
+    "phase": 3,
+    "paths": [
+      "src/wish-item/wish-item.controller.ts",
+      "src/wish-item/dto/create-wish-item.dto.ts",
+      "src/wish-item/dto/update-wish-item.dto.ts"
+    ]
+  },
+  {
+    "id": 9,
+    "title": "Create SavingsGoal Controller & Endpoints",
+    "status": "not-started",
+    "phase": 3,
+    "paths": [
+      "src/savings-goal/savings-goal.controller.ts",
+      "src/savings-goal/dto/create-savings-goal.dto.ts",
+      "src/savings-goal/dto/deposit-savings.dto.ts"
+    ]
+  },
+  {
+    "id": 10,
+    "title": "Emit Budget Alert Events to Webhooks",
+    "status": "not-started",
+    "phase": 4,
+    "paths": [
+      "src/budget/budget.service.ts",
+      "src/common/webhook.service.ts"
+    ]
+  },
+  {
+    "id": 11,
+    "title": "Emit Wish Item Status Change Events to Webhooks",
+    "status": "not-started",
+    "phase": 4,
+    "paths": [
+      "src/wish-item/wish-item.service.ts",
+      "src/common/webhook.service.ts"
+    ]
+  },
+  {
+    "id": 12,
+    "title": "E2E Tests for Budget Workflow",
+    "status": "not-started",
+    "phase": 5,
+    "paths": [
+      "test/budget.e2e-spec.ts"
+    ]
+  },
+  {
+    "id": 13,
+    "title": "E2E Tests for Wish List Workflow",
+    "status": "not-started",
+    "phase": 5,
+    "paths": [
+      "test/wish-list.e2e-spec.ts"
+    ]
+  },
+  {
+    "id": 14,
+    "title": "Integration Tests for Alert Triggering",
+    "status": "not-started",
+    "phase": 5,
+    "paths": [
+      "test/budget-alerts.integration-spec.ts"
+    ]
+  },
+  {
+    "id": 15,
+    "title": "Load Tests for Reporting Endpoints",
+    "status": "not-started",
+    "phase": 5,
+    "paths": [
+      "test/budget-reporting.load-spec.ts"
+    ]
+  }
+]

@@ -3,7 +3,16 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "setupFiles": ["dotenv/config"],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^src/(.*)$": "<rootDir>/../src/$1"
+  },
+  "globals": {
+    "ts-jest": {
+      "tsconfig": "tsconfig.json"
+    }
   }
 }

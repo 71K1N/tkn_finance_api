@@ -1,14 +1,37 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  ObjectIdColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 @Entity()
 export class BankAccount {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @ObjectIdColumn()
+  id: ObjectId;
 
   // eslint-disable-next-line prettier/prettier
-  @Column({length:244})
+  @Column()
   description: string;
 
-  @Column('float')
+  @Column()
   balance: number;
+
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
+
+  // Owner of the account; every query is scoped by it.
+  @Column({ nullable: true })
+  user_id: number | null;
+
+  @Column({ nullable: true })
+  created_by: number | null;
+
+  @Column({ nullable: true })
+  updated_by: number | null;
 }
