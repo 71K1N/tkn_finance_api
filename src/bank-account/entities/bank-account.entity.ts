@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ObjectId } from 'mongodb';
+import { AccountType } from '../account-type';
 
 @Entity()
 export class BankAccount {
@@ -18,6 +19,10 @@ export class BankAccount {
 
   @Column()
   balance: number;
+
+  // Absent on accounts created before the field existed; read it through accountTypeOf().
+  @Column({ nullable: true })
+  type?: AccountType;
 
   @CreateDateColumn()
   created_at: Date;

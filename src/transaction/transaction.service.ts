@@ -5,7 +5,9 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
+import { AccountType, accountTypeOf } from '../bank-account/account-type';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -150,6 +152,25 @@ export class TransactionService {
     );
   }
 
+  /**
+   * Investment accounts move money only through income and transfers, so an
+   * expense can never be recorded against one.
+   */
+  private assertAccountAcceptsType(
+    account: BankAccount | null,
+    type: string | null | undefined,
+  ) {
+    if (
+      account &&
+      (type || '').toUpperCase() === 'EXPENSE' &&
+      accountTypeOf(account) === AccountType.INVESTMENT
+    ) {
+      throw new UnprocessableEntityException(
+        'Contas de investimento não aceitam despesas. Use uma transferência para movimentar o dinheiro.',
+      );
+    }
+  }
+
   async create(createTransactionDto: CreateTransactionDto, userId: number) {
     const account = await this.bankAccountRepository.findOne({
       where: {
@@ -180,6 +201,7 @@ export class TransactionService {
     }
 
     const t = (createTransactionDto.type || '').toLowerCase();
+    this.assertAccountAcceptsType(account, createTransactionDto.type);
     const isPlanned = hasDueDate(createTransactionDto.due_date);
     const subcategoryId = createTransactionDto.subcategory_id
       ? toObjectId(createTransactionDto.subcategory_id)
@@ -1106,6 +1128,26 @@ export class TransactionService {
       if (!subcat || (subcat.user_id != null && subcat.user_id !== userId)) {
         throw new NotFoundException('Subcategory not found');
       }
+    }
+
+    // Only an edit that changes the type or the account is checked, so legacy
+    // expenses of an account that later became INVESTMENT can still be renamed.
+    if (
+      !isTransfer &&
+      (updateTransactionDto.type !== undefined ||
+        updateTransactionDto.account_id !== undefined)
+    ) {
+      const accountId =
+        updateTransactionDto.account_id ?? transaction.account_id?.toString();
+      const account = accountId
+        ? await this.bankAccountRepository.findOne({
+            where: { _id: toObjectId(accountId), user_id: userId } as any,
+          })
+        : null;
+      this.assertAccountAcceptsType(
+        account,
+        updateTransactionDto.type ?? transaction.type,
+      );
     }
 
     const before = { ...transaction };

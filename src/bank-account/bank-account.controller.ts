@@ -34,10 +34,8 @@ export class BankAccountController {
   }
 
   @Get('total-balance')
-  async getTotalBalance(@User() userId: number) {
-    return {
-      totalBalance: await this.bankAccountService.getTotalBalance(userId),
-    };
+  getTotalBalance(@User() userId: number) {
+    return this.bankAccountService.getTotalBalance(userId);
   }
 
   @Get(':id/balance')

@@ -25,6 +25,7 @@
     "migrate:fix-payment-date-timezone": "ts-node src/migrations/run-fix-payment-date-timezone.ts",
     "migrate:populate-owner-user-id": "ts-node src/migrations/run-populate-owner-user-id.ts",
     "migrate:normalize-due-date": "ts-node src/migrations/run-normalize-due-date.ts",
+    "migrate:populate-account-type": "ts-node src/migrations/run-populate-account-type.ts",
     "deploy:rasp": "bash scripts/deploy-rasp.sh",
     "prepare": "husky || true",
     "release": "commit-and-tag-version"

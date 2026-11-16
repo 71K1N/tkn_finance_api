@@ -30,7 +30,11 @@ const SEVERITY_RANK: Record<InsightSeverity, number> = {
 
 interface FactsBundle {
   month: string;
-  totalBalance: number;
+  /**
+   * Money in the user's accounts, split so the narration never presents what is
+   * invested as money free to spend.
+   */
+  accountBalance: { available: number; invested: number };
   summary: { totalIncome: number; totalExpenses: number; balance: number };
   /**
    * The month valued at `status=paid` — money that actually moved. `summary` above is
@@ -193,7 +197,10 @@ export class InsightsService {
 
     const facts: FactsBundle = {
       month,
-      totalBalance,
+      accountBalance: {
+        available: totalBalance.available,
+        invested: totalBalance.invested,
+      },
       summary,
       realizedSummary,
       monthlyTrend,
@@ -360,6 +367,9 @@ export class InsightsService {
                 'for maior que zero, termine o resumo com uma frase de sugestão prática e acionável ' +
                 'sobre como o usuário poderia se planejar melhor no próximo mês, com base nesses ' +
                 'valores previstos (ex: rever o orçamento da categoria com maior gasto previsto). ' +
+                'facts.accountBalance.available é o dinheiro disponível em contas correntes e ' +
+                'facts.accountBalance.invested é o dinheiro investido; nunca trate o valor ' +
+                'investido como disponível para gastos. ' +
                 'NUNCA invente números — use apenas os valores fornecidos. Responda em JSON no ' +
                 'formato exato: {"summary": "..."}',
             },
