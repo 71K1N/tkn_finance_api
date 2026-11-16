@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ObjectId } from 'mongodb';
 import { TransactionService } from './transaction.service';
@@ -287,6 +288,74 @@ describe('TransactionService', () => {
       expect(insertOptions.session).toBe(updateOptions.session);
     });
 
+    describe('investment accounts', () => {
+      beforeEach(() => {
+        bankAccountRepository.findOne.mockResolvedValue({
+          id: accountId,
+          balance: 500,
+          type: 'INVESTMENT',
+        } as unknown as BankAccount);
+      });
+
+      it('rejects an expense without writing anything or moving the balance', async () => {
+        await expect(
+          service.create(
+            {
+              ...baseDto,
+              payment_date: new Date('2026-07-01'),
+              paid_amount: 100,
+            } as any,
+            USER_ID,
+          ),
+        ).rejects.toThrow(UnprocessableEntityException);
+
+        expect(transactionCalls('insertOne')).toHaveLength(0);
+        expect(bankAccountCalls('updateOne')).toHaveLength(0);
+      });
+
+      it('accepts income', async () => {
+        await service.create({ ...baseDto, type: 'INCOME' }, USER_ID);
+
+        expect(transactionCalls('insertOne')).toHaveLength(1);
+      });
+
+      it('accepts a transfer out of the investment account', async () => {
+        const targetAccountId = ObjectId.createFromHexString(
+          '507f1f77bcf86cd799439013',
+        );
+        bankAccountRepository.findOne.mockImplementation(({ where }: any) =>
+          Promise.resolve(
+            where._id.toString() === accountId.toString()
+              ? { id: accountId, balance: 500, type: 'INVESTMENT' }
+              : { id: targetAccountId, balance: 0, type: 'CHECKING' },
+          ),
+        );
+
+        await service.create(
+          {
+            amount: 50,
+            account_id: accountId.toString(),
+            target_account_id: targetAccountId.toString(),
+            type: 'transfer',
+          } as CreateTransactionDto,
+          USER_ID,
+        );
+
+        expect(transactionCalls('insertMany')).toHaveLength(1);
+      });
+
+      it('accepts an expense on an account stored without a type', async () => {
+        bankAccountRepository.findOne.mockResolvedValue({
+          id: accountId,
+          balance: 500,
+        });
+
+        await service.create(baseDto, USER_ID);
+
+        expect(transactionCalls('insertOne')).toHaveLength(1);
+      });
+    });
+
     describe('transfer', () => {
       const targetAccountId = ObjectId.createFromHexString(
         '507f1f77bcf86cd799439013',
@@ -500,6 +569,53 @@ describe('TransactionService', () => {
       expect(update.$set.subcategory_id).toEqual(
         ObjectId.createFromHexString(subcategoryId),
       );
+    });
+
+    describe('investment accounts', () => {
+      const investmentId = ObjectId.createFromHexString(
+        '507f1f77bcf86cd799439016',
+      );
+
+      beforeEach(() => {
+        bankAccountRepository.findOne.mockResolvedValue({
+          id: investmentId,
+          user_id: USER_ID,
+          type: 'INVESTMENT',
+        });
+      });
+
+      it('rejects moving an expense into an investment account', async () => {
+        transactionRepository.findOne.mockResolvedValue(existingTransaction());
+
+        await expect(
+          service.update(
+            id,
+            { account_id: investmentId.toString() } as any,
+            USER_ID,
+          ),
+        ).rejects.toThrow(UnprocessableEntityException);
+        expect(transactionCalls('updateOne')).toHaveLength(0);
+      });
+
+      it('rejects turning income of an investment account into an expense', async () => {
+        transactionRepository.findOne.mockResolvedValue(
+          existingTransaction({ type: 'INCOME', account_id: investmentId }),
+        );
+
+        await expect(
+          service.update(id, { type: 'EXPENSE' } as any, USER_ID),
+        ).rejects.toThrow(UnprocessableEntityException);
+      });
+
+      it('still lets a legacy expense of an investment account be renamed', async () => {
+        transactionRepository.findOne.mockResolvedValue(
+          existingTransaction({ account_id: investmentId }),
+        );
+
+        await service.update(id, { name: 'Taxa de custódia' } as any, USER_ID);
+
+        expect(transactionCalls('updateOne')).toHaveLength(1);
+      });
     });
 
     describe('balance reconciliation', () => {

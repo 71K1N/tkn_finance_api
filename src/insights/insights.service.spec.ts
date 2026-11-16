@@ -133,7 +133,13 @@ describe('InsightsService', () => {
         { provide: BudgetService, useValue: budgetService },
         {
           provide: BankAccountService,
-          useValue: { getTotalBalance: jest.fn().mockResolvedValue(0) },
+          useValue: {
+            getTotalBalance: jest.fn().mockResolvedValue({
+              totalBalance: 6000,
+              available: 1000,
+              invested: 5000,
+            }),
+          },
         },
         {
           provide: SavingsGoalService,
@@ -143,6 +149,24 @@ describe('InsightsService', () => {
     }).compile();
 
     service = module.get<InsightsService>(InsightsService);
+  });
+
+  describe('account balance facts', () => {
+    it('sends available and invested money separately, never as one total', async () => {
+      transactionService.getSummary.mockResolvedValue({
+        totalExpenses: 0,
+        totalIncome: 0,
+        balance: 0,
+      });
+
+      const snapshot: any = await service.getOrCreate(1);
+
+      expect(snapshot.facts.accountBalance).toEqual({
+        available: 1000,
+        invested: 5000,
+      });
+      expect(snapshot.facts).not.toHaveProperty('totalBalance');
+    });
   });
 
   describe('forecast projection', () => {

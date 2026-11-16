@@ -1,4 +1,5 @@
-import { IsString, IsNumber, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum } from 'class-validator';
+import { AccountType } from '../account-type';
 
 export class CreateBankAccountDto {
   @IsString()
@@ -7,4 +8,9 @@ export class CreateBankAccountDto {
   @IsNumber()
   @IsOptional()
   balance: number;
+
+  // Defaults to CHECKING on create (see BankAccountService.create).
+  @IsEnum(AccountType)
+  @IsOptional()
+  type?: AccountType;
 }

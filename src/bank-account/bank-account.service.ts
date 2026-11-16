@@ -8,6 +8,19 @@ import { Transaction } from 'src/transaction/entities/transaction.entity';
 import { ObjectId } from 'mongodb';
 import { FindAllQueryDto } from '../common/pagination/find-all-query.dto';
 import { paginate } from '../common/pagination/paginate.util';
+import { AccountType, accountTypeOf } from './account-type';
+
+export interface BalanceTotals {
+  totalBalance: number;
+  available: number;
+  invested: number;
+}
+
+/** Fills `type` on accounts stored before the field existed. */
+function withAccountType(account: BankAccount): BankAccount {
+  account.type = accountTypeOf(account);
+  return account;
+}
 
 @Injectable()
 export class BankAccountService {
@@ -21,26 +34,30 @@ export class BankAccountService {
   create(userId: number, createBankAccountDto: CreateBankAccountDto) {
     return this.bankAccountRepository.save({
       ...createBankAccountDto,
+      type: createBankAccountDto.type ?? AccountType.CHECKING,
       user_id: userId,
       created_by: userId,
       updated_by: userId,
     });
   }
 
-  findAll(userId: number, query: FindAllQueryDto) {
-    return paginate(this.bankAccountRepository, query, {
+  async findAll(userId: number, query: FindAllQueryDto) {
+    const result = await paginate(this.bankAccountRepository, query, {
       searchableFields: ['description'],
       filterableFields: ['description'],
       sortableFields: ['description', 'balance', 'created_at', 'updated_at'],
       defaultSort: { key: 'created_at', direction: 'desc' },
       baseWhere: { user_id: userId },
     });
+    result.data.forEach(withAccountType);
+    return result;
   }
 
-  findOne(id: ObjectId, userId: number) {
-    return this.bankAccountRepository.findOne({
+  async findOne(id: ObjectId, userId: number) {
+    const account = await this.bankAccountRepository.findOne({
       where: { _id: id, user_id: userId } as any,
     });
+    return account ? withAccountType(account) : account;
   }
 
   async update(
@@ -64,11 +81,26 @@ export class BankAccountService {
       });
   }
 
-  async getTotalBalance(userId: number): Promise<number> {
+  /**
+   * The user's balance split by account type: `available` is what sits in
+   * checking accounts, `invested` what sits in investment accounts, and
+   * `totalBalance` is their sum (the value this endpoint returned before the split).
+   */
+  async getTotalBalance(userId: number): Promise<BalanceTotals> {
     const accounts = await this.bankAccountRepository.find({
       where: { user_id: userId } as any,
     });
-    return accounts.reduce((sum, a) => sum + Number(a.balance), 0);
+    let available = 0;
+    let invested = 0;
+    for (const account of accounts) {
+      const balance = Number(account.balance) || 0;
+      if (accountTypeOf(account) === AccountType.INVESTMENT) {
+        invested += balance;
+      } else {
+        available += balance;
+      }
+    }
+    return { totalBalance: available + invested, available, invested };
   }
 
   async getBalance(id: ObjectId, userId: number) {
